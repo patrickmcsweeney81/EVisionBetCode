@@ -404,10 +404,17 @@ def get_book_display_name(book_code: str) -> str:
         book_code: The OddsAPI bookmaker code
     
     Returns:
-        Human-friendly name, or the original code if not found
+        Human-friendly name, or formatted code if not in lookup table
     """
-    book_code = (book_code or "").lower().strip()
-    return BOOK_DISPLAY_NAMES.get(book_code, book_code.replace("_", " ").title())
+    if not book_code:
+        return ""
+    book_code = book_code.lower().strip()
+    # Return from lookup table if available
+    if book_code in BOOK_DISPLAY_NAMES:
+        return BOOK_DISPLAY_NAMES[book_code]
+    # Fallback: format the code for display (replace underscores, title case)
+    # This handles unknown codes gracefully
+    return book_code.replace("_", " ").title()
 
 
 def list_books_by_weight(
@@ -426,13 +433,13 @@ def list_books_by_weight(
     Returns:
         Dict of {book_code: weight} sorted by weight descending
     """
-    # Start with global weights based on market type
+    # Start with a COPY of global weights to avoid modifying originals
     if market_type == "props":
-        base_weights = PLAYER_PROP_WEIGHTS.copy()
+        base_weights = dict(PLAYER_PROP_WEIGHTS)  # Explicit copy
     else:
-        base_weights = MAIN_MARKET_WEIGHTS.copy()
+        base_weights = dict(MAIN_MARKET_WEIGHTS)  # Explicit copy
     
-    # Apply sport overrides if specified
+    # Apply sport overrides if specified (modifies our local copy only)
     if sport:
         sport = sport.upper().strip()
         if sport in SPORT_OVERRIDES:

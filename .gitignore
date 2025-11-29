@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+ENV/
+
+# Environment variables
+.env
+*.env.local
+
+# Data files (contains sensitive betting info)
+data/
+*.csv
+*.json
+!core/__init__.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs & debug output
+*.log
+debug_*.txt
+test_*.txt
+*.txt
+!README.txt
+
+# API responses
+*.json
+!package.json
+
+# OS
+.DS_Store
+Thumbs.db

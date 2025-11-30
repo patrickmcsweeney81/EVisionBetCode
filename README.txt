@@ -1,17 +1,22 @@
 # EV Bot – Sports Betting Expected Value Finder
 
-This bot scans sports betting odds from multiple bookmakers using The Odds API and identifies expected value (EV) opportunities. Arbitrage logic was removed; focus is EV-only. Current modular engine is `ev_arb_bot_NEW.py`.
+This bot scans sports betting odds from multiple bookmakers using The Odds API and identifies expected value (EV) opportunities. Arbitrage logic was removed; focus is EV-only.
+
+Fair price calculation now uses a single unified weighting system via `core/book_weights.py` (v2.0). All active handlers (H2H, spreads, totals, player props, NFL props) have migrated to the weighted median model. Legacy percentage functions remain only for backward compatibility and will be removed after validation. See `BOOK_WEIGHTS_INTEGRATION.md` for full details.
 
 ## How It Works
 - Fetches odds for selected sports and markets from The Odds API
-- Calculates fair prices using sharp bookmakers (Pinnacle, Betfair)
+- Calculates fair prices using sharp bookmakers (Pinnacle, DK/FD, BetOnline, Betfair)
 - Adjusts Betfair odds for commission (default: 6%)
-   - Combines fair estimates with a weighted model favoring Pinnacle and Betfair
+   - v2.0: Uses 0–4 weight scale with sport-specific overrides (props-heavy for NBA/NFL)
+   - Legacy: Percentage-based model favoring Pinnacle remains available
 - Detects: **EV hits** only (arbitrage support has been removed)
 - Logs results to `data/hits_log.csv` and deduplicates using `data/seen_hits.json`
 
 ## Configuration
 All settings are controlled via the `.env` file. Inline comments after `#` are stripped automatically for numeric values.
+
+Note: No `.env` changes are required to use the v2.0 book weights system. Migration is COMPLETE for main and props markets; legacy functions are dormant unless explicitly called in older scripts/tests.
 
 ```
 ODDS_API_KEY=YOUR_KEY            # Required: Odds API key
@@ -50,6 +55,10 @@ TEST_ALLOW_DUPES=0               # 1=disable dedupe (testing only)
 - **INCLUDE_US_BOOKS**: Adds 15 US mass-market books to the ACTIVE_BOOKIES set for logging/comparison.
 - **Event Cache**: `cache_events.json` prevents reprocessing recent events (REFRESH_EVENT_MINUTES) and skipping stale starts (STALE_EVENT_HOURS).
 - **Sharp Inputs**: Fair price modules prioritize Pinnacle; Betfair commission applied before weighting.
+
+Fair Price Model (Unified):
+- `core/fair_prices.py` functions `build_fair_price_from_books` and `build_fair_prices_two_way` using `core/book_weights.py` (0–4 scale, sport/market aware).
+Legacy (Deprecated): `master_fair_odds` and `build_fair_prices_simple` kept temporarily for old tests; not used in current handlers.
 
 ## Output Files
 - `data/all_odds_analysis.csv`: Comprehensive raw+fair odds snapshot (primary source for filtering).

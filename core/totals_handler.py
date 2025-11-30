@@ -8,7 +8,8 @@ KEY RULES:
 """
 from typing import Dict, Optional
 from .utils import snap_to_half, effective_back_odds_betfair
-from .fair_prices import build_fair_prices_simple
+from .fair_prices import build_fair_prices_two_way  # unified v2 fair prices
+from .utils import devig_two_way
 
 
 # Import AU bookmaker list from config
@@ -83,23 +84,14 @@ def extract_totals_odds(bookmaker_data: Dict, line: float, betfair_commission: f
 def process_totals_event(
     event: Dict,
     target_line: float,
-    betfair_commission: float = 0.06
+    betfair_commission: float = 0.06,
+    sport: Optional[str] = None
 ) -> Dict:
     """
-    Process single totals event and calculate fair prices.
-    
-    Args:
-        event: Event dict from API
-        target_line: Target total line (e.g., 215.5)
-        betfair_commission: Betfair commission rate
-    
-    Returns:
-        Dict with fair prices and bookmaker odds:
-        {
-            "fair": {"over": fair_over, "under": fair_under},
-            "pinnacle": {"over": pin_over, "under": pin_under},
-            "bookmakers": {bkey: {"over": odds_over, "under": odds_under}, ...}
-        }
+    Process single totals (over/under) event and calculate fair prices (v2 unified).
+
+    Uses weighted median of devigged sharp odds via book_weights system.
+    Pinnacle required as line anchor; AU books excluded from fair calc.
     """
     bookmakers = event.get("bookmakers", [])
     
@@ -144,21 +136,36 @@ def process_totals_event(
     bf_over = betfair_odds.get("Over")
     bf_under = betfair_odds.get("Under")
     
-    # Calculate fair prices
-    fair_prices = build_fair_prices_simple(
-        pin_over, pin_under,
-        bf_over, bf_under,
-        weight_pinnacle=0.7,
-        weight_betfair=0.3
+    # Build devigged sharp odds dicts for over/under
+    bookmaker_odds_over: Dict[str, float] = {}
+    bookmaker_odds_under: Dict[str, float] = {}
+
+    p_over_prob, p_under_prob = devig_two_way(pin_over, pin_under)
+    if p_over_prob > 0 and p_under_prob > 0:
+        bookmaker_odds_over["pinnacle"] = 1.0 / p_over_prob
+        bookmaker_odds_under["pinnacle"] = 1.0 / p_under_prob
+
+    if bf_over and bf_under:
+        bf_over_prob, bf_under_prob = devig_two_way(bf_over, bf_under)
+        if bf_over_prob > 0 and bf_under_prob > 0:
+            bf_key = "betfair_ex_au" if "betfair_ex_au" in [bk.get("key") for bk in bookmakers] else "betfair_ex_uk"
+            bookmaker_odds_over[bf_key] = 1.0 / bf_over_prob
+            bookmaker_odds_under[bf_key] = 1.0 / bf_under_prob
+
+    fair_prices_v2 = build_fair_prices_two_way(
+        bookmaker_odds_over,
+        bookmaker_odds_under,
+        market_type="main",
+        sport=sport
     )
-    
-    if not fair_prices:
+
+    if not fair_prices_v2:
         return {}
     
     return {
         "fair": {
-            "over": fair_prices["A"],
-            "under": fair_prices["B"]
+            "over": fair_prices_v2["A"],
+            "under": fair_prices_v2["B"]
         },
         "pinnacle": {
             "over": pin_over,

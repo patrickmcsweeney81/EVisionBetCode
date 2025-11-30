@@ -1,3 +1,55 @@
+if __name__ == "__main__":
+    from core.book_weights import list_books_by_weight
+    print("[DEBUG] Sharp books for main markets (weight >= 1):")
+    for book, weight in list_books_by_weight("main").items():
+        print(f"  {book}: {weight}")
+    print("[DEBUG] Sharp books for player props (weight >= 1):")
+    for book, weight in list_books_by_weight("props").items():
+        print(f"  {book}: {weight}")
+# Utility to backup and compare CSVs for market shift detection
+import shutil
+def backup_csv(src, backup):
+    if src.exists():
+        shutil.copy(str(src), str(backup))
+
+def compare_csvs(old_csv, new_csv, threshold=0.5):
+    import csv
+    changes = []
+    if not old_csv.exists() or not new_csv.exists():
+        return changes
+    with open(old_csv, newline='', encoding='utf-8') as f1, open(new_csv, newline='', encoding='utf-8') as f2:
+        reader1 = list(csv.DictReader(f1))
+        reader2 = list(csv.DictReader(f2))
+        # Index by event+market+selection+bookmaker for fast lookup
+        def key(row):
+            return (row.get('event',''), row.get('market',''), row.get('selection',''), row.get('bookmaker',''))
+        old_map = {key(r): r for r in reader1}
+        new_map = {key(r): r for r in reader2}
+        # Check for large odds changes
+        for k in new_map:
+            if k in old_map:
+                try:
+                    old_odds = float(old_map[k].get('Odds','') or 0)
+                    new_odds = float(new_map[k].get('Odds','') or 0)
+                    if old_odds > 0 and abs(new_odds - old_odds) >= threshold:
+                        changes.append({'type':'odds_shift','key':k,'old':old_odds,'new':new_odds})
+                except Exception:
+                    continue
+        # Check for missing/new entries
+        for k in old_map:
+            if k not in new_map:
+                changes.append({'type':'missing_in_new','key':k})
+        for k in new_map:
+            if k not in old_map:
+                changes.append({'type':'new_in_new','key':k})
+    return changes
+# Utility to clear CSV before logging
+def clear_csv(csv_path, fieldnames):
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        import csv
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+
 #!/usr/bin/env python3
 import os, csv, json, time, statistics, hashlib, sys
 from pathlib import Path
@@ -14,6 +66,7 @@ except Exception:
     # from OS / .bat
     pass
 
+
 # ---------------------------------------------------------------------
 # Paths / files
 # ---------------------------------------------------------------------
@@ -25,6 +78,18 @@ EV_CSV     = DATA_DIR / "hits_ev.csv"     # EV hits only
 DEDUP_FILE = DATA_DIR / "seen_hits.json"  # dedupe storage
 API_USAGE_FILE = DATA_DIR / "api_usage.json"  # API credits tracking
 ALL_ODDS_CSV = DATA_DIR / "all_odds.csv"  # All markets/odds regardless of EV
+ALL_ODDS_ANALYSIS_CSV = DATA_DIR / "all_odds_analysis.csv"  # Mirror file opened in Excel/analysis tools
+
+# Backup and clear all_odds_analysis.csv at the start of each run
+ALL_ODDS_ANALYSIS_FIELDS = [
+    "Time", "sport", "event", "market", "selection", "O/U",
+    "bookmaker", "Odds", "Fair", "EV%", "Prob", "Stake", "NumSharps",
+    "pinnacle", "betfair", "draftkings", "fanduel", "betmgm", "betonlineag", "bovada",
+    "sportsbet", "tab", "neds", "ladbrokes_au", "pointsbetau", "boombet", "betright", "playup", "unibet", "tabtouch", "dabble_au", "betr_au", "bet365_au"
+]
+ALL_ODDS_ANALYSIS_PREV = DATA_DIR / "all_odds_analysis_prev.csv"
+backup_csv(ALL_ODDS_ANALYSIS_CSV, ALL_ODDS_ANALYSIS_PREV)
+clear_csv(ALL_ODDS_ANALYSIS_CSV, ALL_ODDS_ANALYSIS_FIELDS)
 
 
 # ---------------------------------------------------------------------
@@ -152,158 +217,6 @@ INTERP_MIN_SAMPLES = load_env_int("INTERP_MIN_SAMPLES", "3")  # Min samples per 
 # this many samples exist on that single line (set to 1 to be permissive).
 INTERP_MIN_SAMPLES_SINGLE = load_env_int("INTERP_MIN_SAMPLES_SINGLE", "2")
 
-# In-memory audit of interpolation decisions. Each entry is a dict and will be
-# flushed to data/interp_audit.csv at the end of the run when present.
-INTERP_AUDIT: List[Dict[str, Any]] = []
-
-def _record_interp_audit(entry: Dict[str, Any]) -> None:
-    """Append an interpolation audit entry to the in-memory list.
-
-    Expected keys: timestamp, event_id, sport, market, side, method,
-    target_line, neighbors (string), neighbor_counts (string), result_prob
-    """
-    try:
-        INTERP_AUDIT.append(entry)
-    except Exception:
-        pass
-
-def _flush_interp_audit_csv() -> None:
-    """Write any collected interpolation audit entries to data/interp_audit.csv.
-
-    This is intentionally lightweight: if the file doesn't exist it is created,
-    otherwise entries are appended. Quiet on failure.
-    """
-    try:
-        if not INTERP_AUDIT:
-            return
-        out_path = DATA_DIR / "interp_audit.csv"
-        write_header = not out_path.exists()
-        with out_path.open("a", encoding="utf-8", newline="") as f:
-            writer = csv.writer(f)
-            if write_header:
-                writer.writerow(["timestamp","event_id","sport","market","side","method","target_line","neighbors","neighbor_counts","result_prob"])
-            for e in INTERP_AUDIT:
-                writer.writerow([
-                    e.get("timestamp",""),
-                    e.get("event_id",""),
-                    e.get("sport",""),
-                    e.get("market",""),
-                    e.get("side",""),
-                    e.get("method",""),
-                    e.get("target_line",""),
-                    e.get("neighbors",""),
-                    e.get("neighbor_counts",""),
-                    e.get("result_prob",""),
-                ])
-        # Clear after flush to avoid duplicate writes across runs in same session
-        INTERP_AUDIT.clear()
-    except Exception:
-        # Don't crash the run for audit failures
-        try:
-            if EV_DEBUG_BOOKS == "1":
-                import traceback
-                traceback.print_exc()
-        except Exception:
-            pass
-
-# Pinnacle zero-fair diagnostics: collect spread/totals lines where Pinnacle
-# was available but the master fair odds calculated to 0.0. This helps target
-# cases where we failed to synthesize a fair despite Pinnacle being present.
-DIAG_PINNACLE_ISSUES: List[Dict[str, Any]] = []
-
-def _record_pinnacle_issue(entry: Dict[str, Any]) -> None:
-    try:
-        DIAG_PINNACLE_ISSUES.append(entry)
-    except Exception:
-        pass
-
-def _flush_pinnacle_issues_csv() -> None:
-    try:
-        if not DIAG_PINNACLE_ISSUES:
-            return
-        out_path = DATA_DIR / "pinnacle_zero_fair.csv"
-        write_header = not out_path.exists()
-        with out_path.open("a", encoding="utf-8", newline="") as f:
-            writer = csv.writer(f)
-            if write_header:
-                writer.writerow([
-                    "timestamp","event_id","sport","market","line",
-                    "key_A","key_B","pinnacle_found","fair_master_A","fair_master_B","pinnacle_keys"
-                ])
-            for e in DIAG_PINNACLE_ISSUES:
-                writer.writerow([
-                    e.get("timestamp", ""),
-                    e.get("event_id", ""),
-                    e.get("sport", ""),
-                    e.get("market", ""),
-                    e.get("line", ""),
-                    e.get("key_A", ""),
-                    e.get("key_B", ""),
-                    e.get("pinnacle_found", ""),
-                    e.get("fair_master_A", ""),
-                    e.get("fair_master_B", ""),
-                    ";".join(e.get("pinnacle_keys", [])),
-                ])
-        DIAG_PINNACLE_ISSUES.clear()
-    except Exception:
-        try:
-            if EV_DEBUG_BOOKS == "1":
-                import traceback
-                traceback.print_exc()
-        except Exception:
-            pass
-
-# Temporary holder populated by build_fair_prices so callers can correlate
-# the last build call with diagnostic checks immediately after.
-LAST_BUILD_FAIR_DIAG: Dict[str, Any] = {}
-
-# Diagnostic: sharp presence per event/line
-DIAG_SHARP_PRESENCE: List[Dict[str, Any]] = []
-
-def _record_sharp_presence(entry: Dict[str, Any]) -> None:
-    try:
-        DIAG_SHARP_PRESENCE.append(entry)
-    except Exception:
-        pass
-
-def _flush_sharp_presence_csv() -> None:
-    try:
-        if not DIAG_SHARP_PRESENCE:
-            return
-        out_path = DATA_DIR / "sharp_presence.csv"
-        write_header = not out_path.exists()
-        with out_path.open("a", encoding="utf-8", newline="") as f:
-            writer = csv.writer(f)
-            if write_header:
-                writer.writerow([
-                    "timestamp","event_id","sport","market","line","key_A","key_B",
-                    "pinnacle_present","betfair_present","sharp_count_A","sharp_count_B",
-                    "sharps_A","sharps_B"
-                ])
-            for e in DIAG_SHARP_PRESENCE:
-                writer.writerow([
-                    e.get("timestamp",""),
-                    e.get("event_id",""),
-                    e.get("sport",""),
-                    e.get("market",""),
-                    e.get("line",""),
-                    e.get("key_A",""),
-                    e.get("key_B",""),
-                    e.get("pinnacle_present",""),
-                    e.get("betfair_present",""),
-                    e.get("sharp_count_A",""),
-                    e.get("sharp_count_B",""),
-                    e.get("sharps_A",""),
-                    e.get("sharps_B",""),
-                ])
-        DIAG_SHARP_PRESENCE.clear()
-    except Exception:
-        try:
-            if EV_DEBUG_BOOKS == "1":
-                import traceback
-                traceback.print_exc()
-        except Exception:
-            pass
 
 # AU soft books – tweak as you like
 # Note: Keys must match The Odds API's exact bookmaker keys
@@ -323,6 +236,7 @@ AU_BOOKIES = [
     "betright",
     "betfair_ex_au",
 ]
+AU_BOOKIES_SET = set(AU_BOOKIES)
 
 # Sharp books for fair price (preferred sources)
 # Tier 1: Pinnacle (sharpest)
@@ -869,34 +783,7 @@ def _compute_spreads_totals_ev(event: Dict[str, Any], seen: Dict[str, bool]) -> 
                     if EV_DEBUG_BOOKS == "1":
                         print(f"[FAIR-LOOKUP] Lookup ok={ok}, got fair_row={fair_row}")
                     fair_master[ok] = master_fair_odds(fair_row)
-
-            # Diagnostic: if Pinnacle was present for this target but the
-            # computed master fair odds are zero for both sides, record a
-            # targeted debug row to help root-cause spread coverage issues.
-            try:
-                diag = LAST_BUILD_FAIR_DIAG if isinstance(LAST_BUILD_FAIR_DIAG, dict) else None
-                if diag and diag.get("event_id") == event.get("id") and diag.get("market") == mkey and float(diag.get("line") or 0) == float(line_val):
-                    pinn_found = int(bool(diag.get("pinnacle_found")))
-                    # Only consider spreads/totals/player_props
-                    if mkey in ("spreads", "totals", "player_props") and pinn_found:
-                        a_master = fair_master.get(out_keys[0], 0.0) if out_keys and has_fair_prices else 0.0
-                        b_master = fair_master.get(out_keys[1], 0.0) if out_keys and has_fair_prices else 0.0
-                        if (not a_master or a_master <= 0.0) and (not b_master or b_master <= 0.0):
-                            _record_pinnacle_issue({
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                                "event_id": event.get("id", ""),
-                                "sport": event.get("sport_key", ""),
-                                "market": mkey,
-                                "line": float(line_val),
-                                "key_A": diag.get("key_A", ""),
-                                "key_B": diag.get("key_B", ""),
-                                "pinnacle_found": pinn_found,
-                                "fair_master_A": a_master,
-                                "fair_master_B": b_master,
-                                "pinnacle_keys": diag.get("pinnacle_keys", []),
-                            })
-            except Exception:
-                pass
+            # (Removed diagnostic block for Pinnacle zero-fair issues)
 
             # Build per-outcome bookmaker odds dict for this line (for EV CSV columns)
             # This will be populated as we collect odds from bookmakers
@@ -927,32 +814,57 @@ def _compute_spreads_totals_ev(event: Dict[str, Any], seen: Dict[str, bool]) -> 
                 for o in outs:
                     outcome_name = o.get("name")
                     outcome_point = o.get("point")
-                    # When a bookmaker line is within tolerance of our target line, snap it to the
-                    # canonical target. This ensures consistent keys like 'Over_46.5' even if the
-                    # book reported 46.499 or 46.75.
-                    if mkey in ("spreads", "totals", "player_props") and outcome_point is not None:
-                        try:
-                            # If this is a strict market (spreads/totals), require exact snapped equality
-                            if mkey in ("spreads", "totals"):
+                    # --- Begin Canonical Player Prop Key Normalization ---
+                    def normalize_player_prop_key(name, point, market_type):
+                        # Try to extract player, stat, over/under, and line from various formats
+                        import re
+                        # Example formats:
+                        #   "Darius Garland Over", "Over 6.5 Darius Garland", "Darius Garland 6.5 Over"
+                        #   "Over", "Under" (with player/line elsewhere)
+                        # Try to find over/under
+                        over_under = None
+                        player = None
+                        stat = None
+                        # Try to extract over/under
+                        m = re.search(r"\b(Over|Under)\b", str(name), re.IGNORECASE)
+                        if m:
+                            over_under = m.group(1).capitalize()
+                        # Try to extract player name (assume not Over/Under/number)
+                        tokens = str(name).split()
+                        tokens = [t for t in tokens if t.lower() not in ("over", "under")]
+                        # Remove stat tokens if present (e.g., Points, Assists, etc.)
+                        stat_types = ["points", "assists", "rebounds", "steals", "blocks", "threes", "pra", "points_assists", "points_rebounds", "rebounds_assists", "points_rebounds_assists"]
+                        tokens_clean = [t for t in tokens if t.lower() not in stat_types]
+                        player = " ".join(tokens_clean).strip()
+                        # Try to extract stat from market_type or name
+                        stat = None
+                        for s in stat_types:
+                            if s in str(market_type).lower():
+                                stat = s
+                        if not stat:
+                            for s in stat_types:
+                                if s in str(name).lower():
+                                    stat = s
+                        # Compose canonical key
+                        # Always: Player|Stat|Over/Under|Line
+                        if over_under and player and point is not None and stat:
+                            return f"{player}|{stat}|{over_under}|{point}"
+                        # Fallback: just use name and point
+                        return f"{name}|{point}"
+
+                    if mkey == "player_props":
+                        nm = normalize_player_prop_key(outcome_name, line_val, mkey)
+                    elif mkey in ("spreads", "totals"):
+                        # For spreads/totals, keep as before
+                        if outcome_point is not None:
+                            try:
                                 if abs(snap_to_half(float(outcome_point)) - snap_to_half(float(line_val))) > 1e-9:
-                                    # Throw away bookmaker outcome that snaps to a different half-point
                                     continue
                                 point_key = float(line_val)
-                            else:
-                                # For other markets (like player_props) allow snapping-within-tolerance
-                                if abs(snap_to_half(float(outcome_point)) - float(line_val)) <= LINE_TOLERANCE:
-                                    point_key = float(line_val)
-                                else:
-                                    point_key = snap_to_half(float(outcome_point))
-                        except Exception:
+                            except Exception:
+                                point_key = outcome_point
+                        else:
                             point_key = outcome_point
-                    else:
-                        point_key = outcome_point
-
-                    if mkey == "spreads":
-                        nm = f"{outcome_name}_{point_key}"
-                    elif mkey == "totals" or mkey == "player_props":
-                        # For totals and player_props normalize to the computed point_key
                         nm = f"{outcome_name}_{point_key}"
                     else:
                         nm = outcome_name
@@ -993,9 +905,9 @@ def _compute_spreads_totals_ev(event: Dict[str, Any], seen: Dict[str, bool]) -> 
                 for o in outs:
                     outcome_name = o.get("name")
                     outcome_point = o.get("point")
-                    if mkey == "spreads":
-                        nm = f"{outcome_name}_{line_val}"
-                    elif mkey == "totals" or mkey == "player_props":
+                    if mkey == "player_props":
+                        nm = normalize_player_prop_key(outcome_name, line_val, mkey)
+                    elif mkey in ("spreads", "totals"):
                         nm = f"{outcome_name}_{line_val}"
                     else:
                         nm = outcome_name
@@ -1765,18 +1677,7 @@ def build_fair_prices(event: Dict[str, Any], market_key: str = "h2h", line: floa
                 except Exception:
                     neigh_desc = ""
                     counts = ""
-                _record_interp_audit({
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "event_id": event.get("id", ""),
-                    "sport": event.get("sport_key", ""),
-                    "market": market_key,
-                    "side": name_A,
-                    "method": "two-sided",
-                    "target_line": float(line),
-                    "neighbors": neigh_desc,
-                    "neighbor_counts": counts,
-                    "result_prob": pA,
-                })
+                pass
 
         # Or try interpolate B and derive A
         if (not fair[key_A].get("median")) and need_B:
@@ -1794,18 +1695,7 @@ def build_fair_prices(event: Dict[str, Any], market_key: str = "h2h", line: floa
                 except Exception:
                     neigh_desc = ""
                     counts = ""
-                _record_interp_audit({
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "event_id": event.get("id", ""),
-                    "sport": event.get("sport_key", ""),
-                    "market": market_key,
-                    "side": name_B,
-                    "method": "two-sided",
-                    "target_line": float(line),
-                    "neighbors": neigh_desc,
-                    "neighbor_counts": counts,
-                    "result_prob": pB,
-                })
+                pass
 
         # Conservative fallback: if full interpolation failed, try single-nearest-line median
         # This helps when one nearby line has samples but the opposite neighbor is missing.
@@ -1832,18 +1722,7 @@ def build_fair_prices(event: Dict[str, Any], market_key: str = "h2h", line: floa
                 except Exception:
                     neigh_desc = ""
                     counts = ""
-                _record_interp_audit({
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "event_id": event.get("id", ""),
-                    "sport": event.get("sport_key", ""),
-                    "market": market_key,
-                    "side": name_A,
-                    "method": "single-nearest",
-                    "target_line": float(line),
-                    "neighbors": neigh_desc,
-                    "neighbor_counts": counts,
-                    "result_prob": pA_near,
-                })
+                pass
                 if EV_DEBUG_BOOKS == "1":
                     print(f"[DEBUG]   Single-nearest fallback A: line={line} used neighbor dist <= {INTERP_MAX_GAP}")
 
@@ -1868,81 +1747,16 @@ def build_fair_prices(event: Dict[str, Any], market_key: str = "h2h", line: floa
                 except Exception:
                     neigh_desc = ""
                     counts = ""
-                _record_interp_audit({
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "event_id": event.get("id", ""),
-                    "sport": event.get("sport_key", ""),
-                    "market": market_key,
-                    "side": name_B,
-                    "method": "single-nearest",
-                    "target_line": float(line),
-                    "neighbors": neigh_desc,
-                    "neighbor_counts": counts,
-                    "result_prob": pB_near,
-                })
+                pass
                 if EV_DEBUG_BOOKS == "1":
                     print(f"[DEBUG]   Single-nearest fallback B: line={line} used neighbor dist <= {INTERP_MAX_GAP}")
 
     # Diagnostic: record which sharp sources were available for this target
-    try:
-        # Determine canonical target keys for A/B
-        if market_key in ("spreads", "totals", "player_props") and line is not None:
-            key_A = f"{name_A}_{line}"
-            key_B = f"{name_B}_{line}"
-        else:
-            key_A = name_A
-            key_B = name_B
-
-        pin_present_A = key_A in pin_odds
-        pin_present_B = key_B in pin_odds
-        bf_present_A = key_A in bf_odds
-        bf_present_B = key_B in bf_odds
-
-        sharps_A = [bk for (bk, p) in sharp_probs_bybook.get(key_A, []) if bk in SHARP_BOOKIES]
-        sharps_B = [bk for (bk, p) in sharp_probs_bybook.get(key_B, []) if bk in SHARP_BOOKIES]
-
-        _record_sharp_presence({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "event_id": event.get("id", ""),
-            "sport": event.get("sport_key", ""),
-            "market": market_key,
-            "line": float(line) if line is not None else "",
-            "key_A": key_A,
-            "key_B": key_B,
-            "pinnacle_present": int(pin_present_A) + int(pin_present_B),
-            "betfair_present": int(bf_present_A) + int(bf_present_B),
-            "sharp_count_A": len(sharps_A),
-            "sharp_count_B": len(sharps_B),
-            "sharps_A": ",".join(sorted(set(sharps_A))),
-            "sharps_B": ",".join(sorted(set(sharps_B))),
-        })
-    except Exception:
-        pass
+    pass
 
     # Populate LAST_BUILD_FAIR_DIAG so the caller can detect cases where
     # Pinnacle was present yet master_fair_odds later resolves to 0.0.
-    try:
-        if market_key in ("spreads", "totals", "player_props") and line is not None and len(out_keys) == 2:
-            key_A = f"{name_A}_{line}"
-            key_B = f"{name_B}_{line}"
-        else:
-            key_A = name_A
-            key_B = name_B
-        pinnacle_keys = list(pin_odds.keys())
-        LAST_BUILD_FAIR_DIAG.clear()
-        LAST_BUILD_FAIR_DIAG.update({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "event_id": event.get("id", ""),
-            "sport": event.get("sport_key", ""),
-            "market": market_key,
-            "line": float(line) if line is not None else "",
-            "key_A": key_A,
-            "key_B": key_B,
-            "pinnacle_keys": pinnacle_keys,
-            "pinnacle_found": int(bool(pinnacle_keys)),
-        })
-    except Exception:
-        pass
+    pass
 
     if EV_DEBUG_BOOKS == "1" and market_key == "spreads":
         print(f"[BUILD-RETURN] Returning fair dict with {len(fair)} keys: {list(fair.keys())}")
@@ -2122,26 +1936,21 @@ def log_all_odds(
         }
 
 def flush_all_odds() -> None:
-    """Write all tracked best EV opportunities to all_odds.csv."""
+    """Write all tracked best EV opportunities to CSV (analysis + summary mirror)."""
     global _all_odds_tracker
-    
+
     if not _all_odds_tracker:
         return
-    
-    # Ensure CSV exists with headers
-    if not ALL_ODDS_CSV.exists():
-        with ALL_ODDS_CSV.open("w", newline="", encoding="utf-8") as f:
-            w = csv.writer(f)
-            w.writerow([
-                "game_start_perth", "sport", "EV", "event", "market", "line", "side",
-                "stake", "book", "price", "Prob", "Fair",
-                "Pinnacle", "Betfair", "Sportsbet", "Bet365", "Pointsbet", "Dabble",
-                "Ladbrokes", "Unibet", "Neds", "TAB", "TABtouch", "Betr", "PlayUp", "BetRight"
-            ])
-    
-    # Write all tracked opportunities
+
+    header = [
+        "game_start_perth", "sport", "EV", "event", "market", "line", "side",
+        "stake", "book", "all_books", "price", "Prob", "Fair",
+        "Pinnacle", "Betfair", "Sportsbet", "Bet365", "Pointsbet", "Dabble",
+        "Ladbrokes", "Unibet", "Neds", "TAB", "TABtouch", "Betr", "PlayUp", "BetRight"
+    ]
+
     rows = []
-    for key, data in _all_odds_tracker.items():
+    for data in _all_odds_tracker.values():
         event = data['event']
         selection = data['selection']
         line = data['line']
@@ -2152,49 +1961,28 @@ def flush_all_odds() -> None:
         edge_pct = data['edge_pct']
         all_book_odds = data['all_book_odds']
         market_key = data['market_key']
-        
+
         sport = event.get("sport_key")
         home = event.get("home_team")
         away = event.get("away_team")
         commence = event.get("commence_time")
-        
-        # For spreads/totals, selection includes line (e.g., "Brooklyn Nets_10.5").
-        # For h2h, selection is just the team name. The structure of fair_* differs:
-        #  - h2h: fair_home/fair_away are component dicts {pinnacle, betfair, median}
-        #  - spreads/totals: we pass a dict mapping selection->master fair (float)
-        # Handle these cases explicitly and compute fair_master accordingly.
+
         fair_master = 0.0
         if market_key == "h2h":
-            # Determine which side this selection refers to and compute master fair from components
-            home = event.get("home_team")
-            away = event.get("away_team")
             if selection == home and isinstance(fair_home, dict):
                 fair_master = master_fair_odds(fair_home)
             elif selection == away and isinstance(fair_away, dict):
                 fair_master = master_fair_odds(fair_away)
-            if os.getenv("EV_DEBUG_BOOKS") == "1":
-                try:
-                    dbg_home = master_fair_odds(fair_home) if isinstance(fair_home, dict) else 0.0
-                    dbg_away = master_fair_odds(fair_away) if isinstance(fair_away, dict) else 0.0
-                    print(f"[DEBUG CSV] H2H fair: home={home} ${dbg_home:.2f} | away={away} ${dbg_away:.2f} | sel={selection} => ${fair_master:.2f}")
-                except Exception:
-                    pass
         else:
-            # spreads/totals path: fair dicts are passed as selection->float
             fair_dict = fair_home if isinstance(fair_home, dict) and selection in fair_home else fair_away
             if isinstance(fair_dict, dict) and selection in fair_dict:
                 fair_val = fair_dict[selection]
-                # If it's a float, use it directly; if it's a dict, process it
                 if isinstance(fair_val, (int, float)):
                     fair_master = float(fair_val)
-                    if os.getenv("EV_DEBUG_BOOKS") == "1" and market_key in ("spreads", "totals"):
-                        print(f"[DEBUG CSV] Found fair for '{selection}': ${fair_master:.2f}")
                 else:
-                    # It's a dict with pinnacle/betfair/median keys
                     fair_master = master_fair_odds(fair_val)
-        
+
         try:
-            # Convert game start time to Perth time
             perth_tz = timezone(timedelta(hours=8))
             if commence:
                 commence_dt = datetime.fromisoformat(commence.replace('Z', '+00:00'))
@@ -2205,26 +1993,18 @@ def flush_all_odds() -> None:
             prob = (1.0 / fair_master) if fair_master > 0 else 0.0
             stake = _kelly_stake(prob, book_odds)
             event_name = f"{home} V {away}"
-            
-            # Extract clean side name
             side_display = selection
-            # For spreads, totals and player_props remove the trailing _line suffix
             if market_key in ("spreads", "totals", "player_props") and "_" in selection:
                 side_display = selection.rsplit("_", 1)[0]
-            
-            # Build bookmaker odds columns
+
             book_order = [
                 "pinnacle", "betfair_ex_au", "sportsbet", "bet365_au", "pointsbetau", "dabble_au",
                 "ladbrokes_au", "unibet", "neds", "tab", "tabtouch", "betr_au", "playup", "betright"
             ]
             book_odds_cols = []
+            au_books_list: List[str] = []
             if all_book_odds:
                 for bk in book_order:
-                    # Use key membership to decide if we have a value for this book.
-                    # Previously this checked truthiness which left blanks when the
-                    # book was absent or had a 0.0 value. We want to show 0.00
-                    # when the key exists and a numeric value is present, and
-                    # otherwise leave the column empty.
                     if bk in all_book_odds and all_book_odds.get(bk) is not None:
                         try:
                             book_odds_cols.append(f"{float(all_book_odds.get(bk)):.2f}")
@@ -2232,27 +2012,51 @@ def flush_all_odds() -> None:
                             book_odds_cols.append("")
                     else:
                         book_odds_cols.append("")
+                for bk in AU_BOOKIES:
+                    if bk in all_book_odds and all_book_odds.get(bk) is not None:
+                        if bk not in au_books_list:
+                            au_books_list.append(bk)
             else:
                 book_odds_cols = [""] * len(book_order)
-            
+            if book in AU_BOOKIES_SET and book not in au_books_list:
+                au_books_list.append(book)
+            all_books_str = ", ".join(au_books_list)
+
             row = [
                 game_start_perth, sport, f"{edge_pct * 100:.2f}%", event_name, market_key,
                 f"{line:.1f}" if line else "", side_display, f"${stake:.2f}", book,
-                f"${book_odds:.2f}", f"{prob * 100:.1f}%", f"${fair_master:.2f}"
+                all_books_str, f"${book_odds:.2f}", f"{prob * 100:.1f}%", f"${fair_master:.2f}"
             ] + book_odds_cols
             rows.append(row)
         except Exception as e:
             print(f"[ERROR] Failed to build CSV row: {e}")
             import traceback
             traceback.print_exc()
-    
-    # Write all rows
-    if rows:
-        with ALL_ODDS_CSV.open("a", newline="", encoding="utf-8") as f:
-            w = csv.writer(f)
-            w.writerows(rows)
-    
-    # Clear tracker for next run
+
+    targets = [ALL_ODDS_CSV, ALL_ODDS_ANALYSIS_CSV]
+    max_retries = 60
+    retry_delay = 5
+    for target in targets:
+        for attempt in range(max_retries):
+            try:
+                with target.open("w", newline="", encoding="utf-8") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(header)
+                    if rows:
+                        writer.writerows(rows)
+                break
+            except PermissionError:
+                print(
+                    f"[WARNING] Could not write to {target} (file may be open in Excel). "
+                    f"Please close the file. Retrying in {retry_delay} seconds..."
+                )
+                time.sleep(retry_delay)
+        else:
+            print(
+                f"[ERROR] Failed to write to {target} after multiple attempts. "
+                "Please close the file and rerun the bot."
+            )
+
     _all_odds_tracker.clear()
 
 
@@ -2729,24 +2533,7 @@ def main() -> int:
             print(f"[!] Error scanning {sp}: {e}")
 
     save_dedupe(seen)
-    # Flush any diagnostic CSVs we've collected during the run so they're
-    # available immediately for inspection.
-    try:
-        _flush_interp_audit_csv()
-    except Exception:
-        pass
-    try:
-        _flush_sharp_presence_csv()
-    except Exception:
-        pass
-    try:
-        _flush_pinnacle_issues_csv()
-    except Exception:
-        pass
-    
-    # Flush interpolation audit CSV (if any) and all_odds tracker to CSV
-    _flush_interp_audit_csv()
-    _flush_sharp_presence_csv()
+    # (Diagnostic CSV flushes removed)
     flush_all_odds()
     # Print simple data-quality counters for quick visibility
     report_data_quality()

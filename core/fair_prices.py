@@ -1,15 +1,110 @@
 """
-Fair price calculation using sharp bookmakers (Pinnacle, Betfair, other sharps).
-NO AU BOOKMAKERS in fair price calculation - they are targets only.
+Unified fair price calculation module.
 
-Weights: Pinnacle 60%, Betfair 25%, Other sharps 15%
-Sharp books: pinnacle, betfair_ex_eu, betfair_ex_au, betonlineag, bovada, 
-             betus, lowvig, mybookieag, marathonbet, matchbook
+SINGLE SOURCE OF TRUTH (v2): `core/book_weights.py`
+- Uses 0–4 integer weights per bookmaker, sport, and market_type.
+- Fair odds derived via weighted median of devigged sharp odds.
+- All active handlers (H2H, spreads, totals, props) use v2 functions.
+
+LEGACY (deprecated - pending removal): Percentage-based functions retained temporarily:
+  - master_fair_odds() - for old tests/scripts
+  - build_fair_prices_simple() - for backward compatibility
+These will be removed after validation window. All new code uses:
+  - build_fair_price_from_books()
+  - build_fair_prices_two_way()
+
+AU bookmakers are NEVER included in fair price construction; they are only EV targets.
 """
 from typing import Dict, Optional, List
 from statistics import median
 from .utils import devig_two_way
-from .config import SHARP_BOOKIES, WEIGHT_PINNACLE, WEIGHT_BETFAIR, WEIGHT_OTHER_SHARPS
+from .config import SHARP_BOOKIES, WEIGHT_PINNACLE, WEIGHT_BETFAIR, WEIGHT_OTHER_SHARPS  # legacy defaults (deprecated)
+
+# NEW: Import book_weights system for v2.0 fair price calculation
+try:
+    from .utils import weighted_median, get_sharp_books_by_weight
+    from .book_weights import get_book_weight
+    BOOK_WEIGHTS_AVAILABLE = True
+except ImportError:
+    BOOK_WEIGHTS_AVAILABLE = False
+
+
+def build_fair_price_from_books(
+    bookmaker_odds: Dict[str, float],
+    market_type: str = "main",
+    sport: Optional[str] = None,
+    min_weight: int = 3
+) -> float:
+    """
+    NEW (v2.0): Calculate fair odds using book_weights system (0-4 scale).
+    
+    Args:
+        bookmaker_odds: Dict of {book_key: odds} (already devigged if 2-way)
+        market_type: "main" (h2h/spreads/totals) or "props"
+        sport: Optional sport code for overrides (e.g., "NBA", "NFL", "MMA")
+        min_weight: Minimum weight to include (default 3 = strong sharps only)
+    
+    Returns:
+        Fair odds using weighted median, or 0.0 if insufficient sharp data
+    """
+    if not BOOK_WEIGHTS_AVAILABLE or not bookmaker_odds:
+        return 0.0
+    
+    # Get sharp books with their weights
+    sharp_books = get_sharp_books_by_weight(bookmaker_odds, market_type, sport, min_weight)
+    
+    if not sharp_books:
+        return 0.0
+    
+    # Require at least 2 sharp books (weight >= 3)
+    if len(sharp_books) < 2:
+        return 0.0
+
+    # If only Betfair is present, skip (do not use Betfair-only fair prices)
+    if len(sharp_books) == 1:
+        book_key = sharp_books[0][0]
+        if book_key.startswith("betfair_ex_"):
+            return 0.0
+
+    # If exactly 2 sharp books and both are Betfair (e.g., AU and EU), skip
+    if len(sharp_books) == 2:
+        book_keys = [bk[0] for bk in sharp_books]
+        if all(k.startswith("betfair_ex_") for k in book_keys):
+            return 0.0
+
+    # Use weighted median (prioritizes weight 4/3 books)
+    values_with_weights = [(odds, weight) for _, odds, weight in sharp_books]
+    return weighted_median(values_with_weights)
+
+
+def build_fair_prices_two_way(
+    bookmaker_odds_a: Dict[str, float],
+    bookmaker_odds_b: Dict[str, float],
+    market_type: str = "main",
+    sport: Optional[str] = None
+) -> Dict[str, float]:
+    """
+    NEW (v2.0): Calculate fair prices for 2-way market using book_weights system.
+    
+    Args:
+        bookmaker_odds_a: Dict of {book_key: odds} for outcome A (already devigged)
+        bookmaker_odds_b: Dict of {book_key: odds} for outcome B (already devigged)
+        market_type: "main" or "props"
+        sport: Optional sport code
+    
+    Returns:
+        {"A": fair_a, "B": fair_b} or empty dict if insufficient data
+    """
+    if not BOOK_WEIGHTS_AVAILABLE:
+        return {}
+    
+    fair_a = build_fair_price_from_books(bookmaker_odds_a, market_type, sport)
+    fair_b = build_fair_price_from_books(bookmaker_odds_b, market_type, sport)
+    
+    if fair_a > 0 and fair_b > 0:
+        return {"A": fair_a, "B": fair_b}
+    
+    return {}
 
 
 def master_fair_odds(
@@ -21,19 +116,9 @@ def master_fair_odds(
     weight_sharps: float = WEIGHT_OTHER_SHARPS
 ) -> float:
     """
-    Combine Pinnacle, Betfair, and other sharps into single fair price.
-    Uses WEIGHTED probabilities.
-    
-    Args:
-        pinnacle_odds: Pinnacle fair odds (or None)
-        betfair_odds: Betfair commission-adjusted odds (or None)
-        other_sharps_odds: List of other sharp book odds
-        weight_pinnacle: Weight for Pinnacle (default 60%)
-        weight_betfair: Weight for Betfair (default 25%)
-        weight_sharps: Weight for other sharps (default 15%)
-    
-    Returns:
-        Final fair odds (or 0.0 if no valid inputs)
+    DEPRECATED: Old percentage-based fair odds calculation.
+    Retained for compatibility with legacy handlers/tests.
+    Prefer build_fair_price_from_books() (v2 weighted median system).
     """
     components = []
     
@@ -86,8 +171,9 @@ def build_fair_prices_simple(
     weight_sharps: float = WEIGHT_OTHER_SHARPS
 ) -> Dict[str, float]:
     """
-    Fair price calculation for 2-way markets using Pinnacle + other sharps.
-    REQUIRES PINNACLE - will return empty dict if no Pinnacle odds.
+    DEPRECATED: Old percentage-based 2-way fair price calculation.
+    Requires Pinnacle. Returns empty dict if missing.
+    Use build_fair_prices_two_way() for the unified v2 system.
     
     Args:
         pin_odds_a: Pinnacle odds for outcome A (REQUIRED)

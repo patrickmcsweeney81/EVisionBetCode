@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+
 import requests
 import os
+import csv
 
 try:
     from dotenv import load_dotenv
@@ -10,44 +12,48 @@ except:
 
 ODDS_API_KEY = os.getenv("ODDS_API_KEY")
 
-# Check multiple sports to see where bet365/dabble/tabtouch appear
-sports = ['americanfootball_nfl', 'basketball_nba', 'icehockey_nhl']
+# AU bookies to check
+AU_BOOKIES = [
+    "sportsbet", "tab", "neds", "ladbrokes_au", "pointsbetau", "boombet", "betright", "playup", "unibet", "tabtouch", "dabble_au", "betr_au", "bet365_au"
+]
 
-for sport in sports:
-    print(f"\n{'='*60}")
-    print(f"Sport: {sport}")
-    print(f"{'='*60}")
-    
-    resp = requests.get(
-        f'https://api.the-odds-api.com/v4/sports/{sport}/odds',
-        params={
-            'apiKey': ODDS_API_KEY,
-            'regions': 'au',
-            'markets': 'h2h',
-            'oddsFormat': 'decimal'
-        },
-        timeout=10
-    )
-    
-    events = resp.json()
-    if not events or len(events) == 0:
-        print("No events found")
-        continue
-        
-    # Collect all unique bookmaker keys across all events
-    all_bookmakers = set()
-    for e in events:
-        for b in e.get('bookmakers', []):
-            all_bookmakers.add(b['key'])
-    
-    print(f"Found {len(events)} events")
-    print(f"Unique bookmakers across all events ({len(all_bookmakers)}):")
-    for bk in sorted(all_bookmakers):
-        print(f"  - {bk}")
-    
-    # Check for our target books
-    targets = ['bet365', 'dabble', 'tabtouch']
-    print(f"\nTarget AU bookmakers:")
-    for t in targets:
-        status = "✓ FOUND" if t in all_bookmakers else "✗ NOT FOUND"
-        print(f"  {t:15s} {status}")
+# Markets to check
+MARKETS = ["spreads", "totals"]
+
+# Sports to check
+SPORTS = ['americanfootball_nfl', 'basketball_nba', 'icehockey_nhl']
+
+def check_coverage():
+    with open("data/missing_bookies_log.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["sport", "event", "market", "missing_bookies"])
+        for sport in SPORTS:
+            print(f"\n{'='*60}")
+            print(f"Sport: {sport}")
+            print(f"{'='*60}")
+            resp = requests.get(
+                f'https://api.the-odds-api.com/v4/sports/{sport}/odds',
+                params={
+                    'apiKey': ODDS_API_KEY,
+                    'regions': 'au',
+                    'markets': ','.join(MARKETS),
+                    'oddsFormat': 'decimal'
+                },
+                timeout=15
+            )
+            events = resp.json()
+            if not events or len(events) == 0:
+                print("No events found")
+                continue
+            for e in events:
+                event_name = e.get('home_team', '') + ' vs ' + e.get('away_team', '')
+                for market in e.get('bookmakers', []):
+                    present = [b['key'] for b in e.get('bookmakers', [])]
+                    missing = [b for b in AU_BOOKIES if b not in present]
+                    if missing:
+                        writer.writerow([sport, event_name, market.get('key', ''), ','.join(missing)])
+            print(f"Checked {len(events)} events for {sport}.")
+    print("\nCoverage check complete. See data/missing_bookies_log.csv.")
+
+if __name__ == "__main__":
+    check_coverage()

@@ -9,7 +9,8 @@ KEY RULES:
 """
 from typing import Dict, List, Optional, Tuple
 from .utils import snap_to_half, effective_back_odds_betfair
-from .fair_prices import build_fair_prices_simple
+from .fair_prices import build_fair_prices_two_way  # unified v2 fair prices
+from .utils import devig_two_way
 
 
 # Import AU bookmaker list from config
@@ -119,25 +120,14 @@ def process_spread_event(
     target_line: float,
     home_team: str,
     away_team: str,
-    betfair_commission: float = 0.06
+    betfair_commission: float = 0.06,
+    sport: Optional[str] = None
 ) -> Dict:
     """
-    Process single spread event and calculate fair prices.
-    
-    Args:
-        event: Event dict from API
-        target_line: Target spread line
-        home_team: Home team name
-        away_team: Away team name
-        betfair_commission: Betfair commission rate
-    
-    Returns:
-        Dict with fair prices and bookmaker odds:
-        {
-            "fair": {"home": fair_home, "away": fair_away},
-            "pinnacle": {"home": pin_home, "away": pin_away},
-            "bookmakers": {bkey: {"home": odds_home, "away": odds_away}, ...}
-        }
+    Process single spread event and calculate fair prices (v2 unified).
+
+    Uses weighted median of devigged sharp odds via book_weights system.
+    Pinnacle still required as line anchor; AU books excluded from fair calc.
     """
     bookmakers = event.get("bookmakers", [])
     
@@ -196,21 +186,40 @@ def process_spread_event(
     bf_home = betfair_odds.get(home_key)
     bf_away = betfair_odds.get(away_key)
     
-    # Calculate fair prices
-    fair_prices = build_fair_prices_simple(
-        pin_home, pin_away,
-        bf_home, bf_away,
-        weight_pinnacle=0.7,
-        weight_betfair=0.3
+    # Build devigged sharp odds dicts for home/away sides
+    bookmaker_odds_home: Dict[str, float] = {}
+    bookmaker_odds_away: Dict[str, float] = {}
+
+    # Devig Pinnacle
+    p_home_prob, p_away_prob = devig_two_way(pin_home, pin_away)
+    if p_home_prob > 0 and p_away_prob > 0:
+        bookmaker_odds_home["pinnacle"] = 1.0 / p_home_prob
+        bookmaker_odds_away["pinnacle"] = 1.0 / p_away_prob
+
+    # Devig Betfair if present (side-specific odds)
+    if bf_home and bf_away:
+        bf_home_prob, bf_away_prob = devig_two_way(bf_home, bf_away)
+        if bf_home_prob > 0 and bf_away_prob > 0:
+            # Preserve original betfair key used for weights
+            # Choose whichever betfair key present in event extraction
+            bf_key = "betfair_ex_au" if "betfair_ex_au" in [bk.get("key") for bk in bookmakers] else "betfair_ex_uk"
+            bookmaker_odds_home[bf_key] = 1.0 / bf_home_prob
+            bookmaker_odds_away[bf_key] = 1.0 / bf_away_prob
+
+    fair_prices_v2 = build_fair_prices_two_way(
+        bookmaker_odds_home,
+        bookmaker_odds_away,
+        market_type="main",
+        sport=sport
     )
-    
-    if not fair_prices:
+
+    if not fair_prices_v2:
         return {}
     
     return {
         "fair": {
-            "home": fair_prices["A"],
-            "away": fair_prices["B"]
+            "home": fair_prices_v2["A"],
+            "away": fair_prices_v2["B"]
         },
         "pinnacle": {
             "home": pin_home,

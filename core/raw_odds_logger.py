@@ -7,7 +7,9 @@ from typing import Dict, List, Optional
 from statistics import median
 from datetime import datetime, timezone, timedelta
 from core.logging import log_all_odds
+
 from core.utils import kelly_stake
+from core.interpolation import interpolate_odds
 
 
 def calculate_fair_odds(
@@ -112,6 +114,24 @@ def log_raw_event_odds(
 ):
     """
     Extract and log ALL odds from a raw event to all_odds_analysis.csv
+    """
+    sport_key = event.get("sport_key", "")
+    event_id = event.get("id", "")
+    home_team = event.get("home_team", "")
+    away_team = event.get("away_team", "")
+    commence_time_utc = event.get("commence_time", "")
+
+    # DEBUG: Print which bookmakers have totals markets for this event
+    totals_coverage = {}
+    bookmakers = event.get("bookmakers", [])
+    for b in bookmakers:
+        bkey = b.get('key', '')
+        totals_keys = [m.get('key', '') for m in b.get('markets', []) if m.get('key', '').startswith('totals')]
+        totals_coverage[bkey] = totals_keys
+    print(f"[DEBUG] Totals market coverage for event {event_id}: {totals_coverage}")
+    any_row_logged = False
+    """
+    Extract and log ALL odds from a raw event to all_odds_analysis.csv
     
     This logs EVERY bookmaker × market × selection combination WITH:
     - Fair prices calculated from sharp bookmakers (Pinnacle, Betfair, others)
@@ -149,20 +169,194 @@ def log_raw_event_odds(
     bookmakers = event.get("bookmakers", [])
     
     # AU bookmaker column list
-    au_books_in_csv = ["sportsbet", "tab", "neds", "ladbrokes_au", "pointsbetau",
-                       "boombet", "betright", "playup", "unibet", "tabtouch",
-                       "dabble_au", "betr_au", "bet365_au"]
+    au_books_in_csv = [
+        "sportsbet", "tab", "neds", "ladbrokes_au", "pointsbetau",
+        "boombet", "betright", "playup", "unibet", "tabtouch",
+        "dabble_au", "betr_au", "bet365_au"
+    ]  # Do NOT include betfair_ex_au or betfair_ex_eu
     
     # Sharp bookmakers for fair price calculation
     sharp_bookies = ["pinnacle", "betfair_ex_au", "betfair_ex_eu"]
     
+    # DEBUG: Print all bookmaker keys and their market keys for the first event
+    print(f"[DEBUG] Bookmakers for event {event_id}: {[b.get('key') for b in bookmakers]}")
+    for b in bookmakers:
+        print(f"[DEBUG] Bookmaker {b.get('key')} markets: {[m.get('key') for m in b.get('markets', [])]}")
+
     # Extract ALL odds from ALL bookmakers
     for bookmaker in bookmakers:
         bkey = bookmaker.get("key", "")
-        
+
+        # Never log a row with bookmaker as betfair_ex_au or betfair_ex_eu
+        if bkey in ["betfair_ex_au", "betfair_ex_eu"]:
+            continue
+
         # Only log AU bookmakers + sharp bookmakers (for fair price calculation)
         if bkey not in au_bookies and bkey not in sharp_bookies:
-            continue
+            # Special fallback for main markets: if only Betfair (and/or Pinnacle) has odds, log a row for Pinnacle or Betfair
+            # Only do this for h2h, spreads, totals (not player props)
+            fallback_logged = False
+            for market in bookmaker.get("markets", []):
+                market_key = market.get("key", "")
+                if market_key not in ["h2h", "spreads", "totals"]:
+                    continue
+                # Check if only Betfair and/or Pinnacle have odds for this market
+                available_books = set()
+                for bm in bookmakers:
+                    bm_key = bm.get("key", "")
+                    for bm_market in bm.get("markets", []):
+                        if bm_market.get("key") == market_key:
+                            available_books.add(bm_key)
+                allowed = {"betfair_ex_au", "betfair_ex_eu", "pinnacle"}
+                if available_books and available_books.issubset(allowed):
+                    # Find a bookmaker to log as: prefer pinnacle, else betfair
+                    log_bkey = None
+                    if "pinnacle" in available_books:
+                        log_bkey = "pinnacle"
+                    elif "betfair_ex_au" in available_books or "betfair_ex_eu" in available_books:
+                        log_bkey = "betfair"
+                    if log_bkey:
+                        # Inline the logging logic for this synthetic bookmaker
+                        fake_bookie = {"key": log_bkey, "markets": [market]}
+                        # The rest of the code is similar to the main loop below
+                        # (Copy the market/outcome logging code here, but use fake_bookie and bookmakers)
+                        # --- Begin inline logging ---
+                        bkey_fallback = fake_bookie["key"]
+                        markets_fallback = fake_bookie.get("markets", [])
+                        for market_fallback in markets_fallback:
+                            market_key_fallback = market_fallback.get("key", "")
+                            outcomes_fallback = market_fallback.get("outcomes", [])
+                            # Build a dict of all bookmaker odds for this market
+                            all_bookie_odds_fallback = {}
+                            for bm in bookmakers:
+                                bm_key = bm.get("key", "")
+                                for bm_market in bm.get("markets", []):
+                                    if bm_market.get("key") == market_key_fallback:
+                                        for bm_outcome in bm_market.get("outcomes", []):
+                                            outcome_name = bm_outcome.get("name", "")
+                                            outcome_odds_raw = bm_outcome.get("price", 0)
+                                            outcome_odds = american_to_decimal(outcome_odds_raw, market_key_fallback, bm_key)
+                                            point = bm_outcome.get("point")
+                                            if point is not None:
+                                                outcome_key = f"{outcome_name}_{point}"
+                                            else:
+                                                outcome_key = outcome_name
+                                            if bm_key not in all_bookie_odds_fallback:
+                                                all_bookie_odds_fallback[bm_key] = {}
+                                            all_bookie_odds_fallback[bm_key][outcome_key] = outcome_odds
+                            for outcome in outcomes_fallback:
+                                outcome_name = outcome.get("name", "")
+                                outcome_odds_raw = outcome.get("price", 0)
+                                outcome_odds = american_to_decimal(outcome_odds_raw, market_key_fallback, bkey_fallback)
+                                point = outcome.get("point")
+                                description = outcome.get("description", "")
+                                if outcome_odds <= 0:
+                                    continue
+                                if point is not None:
+                                    if market_key_fallback == "spreads":
+                                        selection = f"{outcome_name} {point:+.1f}"
+                                    else:
+                                        selection = outcome_name
+                                    market_display = f"{market_key_fallback}_{abs(point)}"
+                                    outcome_key = f"{outcome_name}_{point}"
+                                else:
+                                    selection = outcome_name
+                                    market_display = market_key_fallback
+                                    outcome_key = outcome_name
+                                # Calculate fair price using sharp bookmakers
+                                pinnacle_odds_for_outcome = None
+                                betfair_odds_for_outcome = None
+                                other_sharps_odds_for_outcome = []
+                                sharp_keys = ["pinnacle", "betfair_ex_au", "betfair_ex_eu"]
+                                for bm in bookmakers:
+                                    bm_key = bm.get("key", "")
+                                    if bm_key not in sharp_keys:
+                                        continue
+                                    for bm_market in bm.get("markets", []):
+                                        if bm_market.get("key") == market_key_fallback:
+                                            for bm_outcome in bm_market.get("outcomes", []):
+                                                bm_outcome_name = bm_outcome.get("name", "")
+                                                bm_outcome_odds = bm_outcome.get("price", 0)
+                                                bm_point = bm_outcome.get("point")
+                                                if bm_outcome_name != outcome_name:
+                                                    continue
+                                                if point is not None and bm_point != point:
+                                                    continue
+                                                if bm_key == "pinnacle":
+                                                    pinnacle_odds_for_outcome = bm_outcome_odds
+                                                elif bm_key in ["betfair_ex_au", "betfair_ex_eu"]:
+                                                    betfair_odds_for_outcome = bm_outcome_odds
+                                fair_odds = calculate_fair_odds(
+                                    pinnacle_odds_for_outcome,
+                                    betfair_odds_for_outcome,
+                                    other_sharps_odds_for_outcome,
+                                    betfair_commission=betfair_commission
+                                )
+                                num_sharps = 0
+                                if pinnacle_odds_for_outcome and pinnacle_odds_for_outcome > 1.0:
+                                    num_sharps += 1
+                                if betfair_odds_for_outcome and betfair_odds_for_outcome > 1.0:
+                                    num_sharps += 1
+                                if fair_odds > 1.0 and num_sharps >= 2:
+                                    edge = (outcome_odds / fair_odds) - 1.0
+                                    implied_prob = 1.0 / fair_odds
+                                    if edge > 0:
+                                        kelly_full = (outcome_odds * implied_prob - (1 - implied_prob)) / outcome_odds
+                                        kelly_stake_amt = bankroll * kelly_full * kelly_fraction
+                                        kelly_stake_amt = max(0, min(kelly_stake_amt, bankroll * 0.1))
+                                        stake_str = f"${int(kelly_stake_amt)}"
+                                    else:
+                                        stake_str = "$0"
+                                    fair_str = f"{fair_odds:.3f}"
+                                    edge_str = f"{edge * 100:.2f}%"
+                                    prob_str = f"{implied_prob * 100:.2f}%"
+                                    num_sharps_str = str(num_sharps)
+                                else:
+                                    continue
+                                all_odds_row = {
+                                    "Time": commence_time,
+                                    "sport": sport_key,
+                                    "event": f"{away_team} @ {home_team}",
+                                    "market": market_display,
+                                    "selection": selection,
+                                    "bookmaker": bkey_fallback,
+                                    "Odds": f"{outcome_odds:.3f}",
+                                    "Fair": fair_str,
+                                    "EV%": edge_str,
+                                    "Prob": prob_str,
+                                    "Stake": stake_str,
+                                    "NumSharps": num_sharps_str,
+                                    "pinnacle": "",
+                                    "betfair": "",
+                                    "draftkings": "",
+                                    "fanduel": "",
+                                    "betmgm": "",
+                                    "betonlineag": "",
+                                    "bovada": "",
+                                }
+                                for bk_col in au_books_in_csv:
+                                    if bk_col in ["betfair_ex_au", "betfair_ex_eu"]:
+                                        continue
+                                    if bk_col in all_bookie_odds_fallback and outcome_key in all_bookie_odds_fallback[bk_col]:
+                                        all_odds_row[bk_col] = f"{all_bookie_odds_fallback[bk_col][outcome_key]:.3f}"
+                                if "pinnacle" in all_bookie_odds_fallback and outcome_key in all_bookie_odds_fallback["pinnacle"]:
+                                    all_odds_row["pinnacle"] = f"{all_bookie_odds_fallback['pinnacle'][outcome_key]:.3f}"
+                                betfair_odds = None
+                                if "betfair_ex_au" in all_bookie_odds_fallback and outcome_key in all_bookie_odds_fallback["betfair_ex_au"]:
+                                    betfair_odds = all_bookie_odds_fallback["betfair_ex_au"][outcome_key]
+                                elif "betfair_ex_eu" in all_bookie_odds_fallback and outcome_key in all_bookie_odds_fallback["betfair_ex_eu"]:
+                                    betfair_odds = all_bookie_odds_fallback["betfair_ex_eu"][outcome_key]
+                                if betfair_odds:
+                                    all_odds_row["betfair"] = f"{betfair_odds:.3f}"
+                                # Log to all_odds_analysis.csv
+                                print(f"[DEBUG] Fallback Logging row: event={event_id}, market={market_key_fallback}, selection={selection}, bookmaker={bkey_fallback}, odds={outcome_odds}")
+                                log_all_odds(all_odds_csv, all_odds_row)
+                                any_row_logged = True
+                        fallback_logged = True
+            if fallback_logged:
+                continue
+            else:
+                continue
         
         markets = bookmaker.get("markets", [])
         
@@ -204,6 +398,7 @@ def log_raw_event_odds(
                 description = outcome.get("description", "")  # Player name for props
                 
                 if outcome_odds <= 0:
+                    print(f"[DEBUG] Skipping outcome with non-positive odds: event={event_id}, market={market_key}, outcome={outcome_name}, odds={outcome_odds}")
                     continue
                 
                 # Build selection name
@@ -311,11 +506,10 @@ def log_raw_event_odds(
                         if len(valid_other) >= 2:  # Only counts if 2+ (since we take median)
                             num_sharps += len(valid_other)
                 
-                # Calculate edge, prob, stake
-                if fair_odds > 1.0:
+                # Only log if fair_odds is valid and at least 2 sharps contributed
+                if fair_odds > 1.0 and num_sharps >= 2:
                     edge = (outcome_odds / fair_odds) - 1.0
                     implied_prob = 1.0 / fair_odds  # Probability based on FAIR odds, not book odds
-                    
                     # Kelly stake
                     if edge > 0:
                         kelly_full = (outcome_odds * implied_prob - (1 - implied_prob)) / outcome_odds
@@ -324,17 +518,13 @@ def log_raw_event_odds(
                         stake_str = f"${int(kelly_stake_amt)}"
                     else:
                         stake_str = "$0"
-                    
                     fair_str = f"{fair_odds:.3f}"
                     edge_str = f"{edge * 100:.2f}%"
                     prob_str = f"{implied_prob * 100:.2f}%"
-                    num_sharps_str = str(num_sharps) if num_sharps > 0 else ""
+                    num_sharps_str = str(num_sharps)
                 else:
-                    fair_str = ""
-                    edge_str = ""
-                    prob_str = ""
-                    stake_str = ""
-                    num_sharps_str = ""
+                    # Skip logging this row if not enough sharps or invalid fair price
+                    continue
                 
                 # Build row for this specific bookmaker × selection
                 all_odds_row = {
@@ -344,7 +534,7 @@ def log_raw_event_odds(
                     "market": market_display,
                     "selection": selection,
                     "bookmaker": bkey,
-                    "Book": f"{outcome_odds:.3f}",
+                    "Odds": f"{outcome_odds:.3f}",
                     "Fair": fair_str,
                     "EV%": edge_str,
                     "Prob": prob_str,
@@ -360,30 +550,56 @@ def log_raw_event_odds(
                     "bovada": "",
                 }
                 
-                # Fill in all bookmaker odds for this selection
-                for bk_col in au_books_in_csv:
-                    if bk_col in all_bookie_odds and outcome_key in all_bookie_odds[bk_col]:
-                        all_odds_row[bk_col] = f"{all_bookie_odds[bk_col][outcome_key]:.3f}"
-                
-                # Fill pinnacle and betfair if available
+
+                # DEBUG: Print all_bookie_odds and outcome_key for tracing
+                if bkey in ["bovada", "draftkings", "neds", "ladbrokes_au", "sportsbet", "betmgm", "fanduel"]:
+                    print(f"[TRACE] Event: {event_id}, Market: {market_key}, Selection: {selection}, Bookmaker: {bkey}, Outcome Key: {outcome_key}")
+                    print(f"[TRACE] all_bookie_odds for {bkey}: {all_bookie_odds.get(bkey, {})}")
+
+
+                # Only fill the odds for the current bookmaker in its column
+                if bkey in all_bookie_odds and outcome_key in all_bookie_odds[bkey]:
+                    all_odds_row[bkey] = f"{all_bookie_odds[bkey][outcome_key]:.3f}"
+                else:
+                    # Try to interpolate odds for this bookmaker/line if missing
+                    # Only for player props (market_key.startswith("player_"))
+                    if market_key.startswith("player_"):
+                        # Gather all lines/odds for this bookmaker/market/outcome_name
+                        alt_points = []
+                        for alt_key, alt_odds in all_bookie_odds.get(bkey, {}).items():
+                            # alt_key format: "Under_24.5", "Under_25.5", etc.
+                            if alt_key.startswith(outcome_name + "_"):
+                                try:
+                                    alt_point = float(alt_key.split("_")[-1])
+                                    alt_points.append((alt_point, alt_odds))
+                                except Exception:
+                                    continue
+                        if point is not None and alt_points:
+                            interp_odds = interpolate_odds(alt_points, float(point))
+                            if interp_odds and interp_odds > 1.01:
+                                all_odds_row[bkey] = f"({interp_odds:.2f})"  # Mark as interpolated
+
+                # Optionally fill sharp columns for reference (pinnacle, betfair, US sharps)
                 if "pinnacle" in all_bookie_odds and outcome_key in all_bookie_odds["pinnacle"]:
                     all_odds_row["pinnacle"] = f"{all_bookie_odds['pinnacle'][outcome_key]:.3f}"
-                
-                # Check both Betfair exchanges (prefer AU, fallback to EU)
+
                 betfair_odds = None
                 if "betfair_ex_au" in all_bookie_odds and outcome_key in all_bookie_odds["betfair_ex_au"]:
                     betfair_odds = all_bookie_odds["betfair_ex_au"][outcome_key]
                 elif "betfair_ex_eu" in all_bookie_odds and outcome_key in all_bookie_odds["betfair_ex_eu"]:
                     betfair_odds = all_bookie_odds["betfair_ex_eu"][outcome_key]
-                
                 if betfair_odds:
                     all_odds_row["betfair"] = f"{betfair_odds:.3f}"
-                
-                # Fill US sharp bookmaker odds (for player props)
+
                 us_sharps = ["draftkings", "fanduel", "betmgm", "betonlineag", "bovada"]
                 for us_sharp in us_sharps:
                     if us_sharp in all_bookie_odds and outcome_key in all_bookie_odds[us_sharp]:
                         all_odds_row[us_sharp] = f"{all_bookie_odds[us_sharp][outcome_key]:.3f}"
                 
                 # Log to all_odds_analysis.csv
+                print(f"[DEBUG] Logging row: event={event_id}, market={market_key}, selection={selection}, bookmaker={bkey}, odds={outcome_odds}")
                 log_all_odds(all_odds_csv, all_odds_row)
+                any_row_logged = True
+    if not any_row_logged:
+        print(f"[DEBUG] No valid outcomes logged for event {event_id} ({home_team} vs {away_team})")
+

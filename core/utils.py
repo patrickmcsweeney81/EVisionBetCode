@@ -2,7 +2,8 @@
 Utility functions for EV Bot.
 Extracted from ev_arb_bot.py for modularity.
 """
-from typing import Tuple
+from typing import Tuple, List, Dict
+from statistics import median
 
 
 def devig_two_way(odds1: float, odds2: float) -> Tuple[float, float]:
@@ -76,3 +77,69 @@ def kelly_stake(bankroll: float, fair_odds: float, market_odds: float, kelly_fra
     stake = bankroll * kelly_pct * kelly_fraction
     
     return max(0.0, stake)
+
+
+def weighted_median(values_with_weights: List[Tuple[float, int]]) -> float:
+    """
+    Calculate weighted median using book weights (0-4 scale).
+    
+    Args:
+        values_with_weights: List of (value, weight) tuples
+    
+    Returns:
+        Weighted median value, or 0.0 if no valid values
+    
+    Examples:
+        >>> weighted_median([(2.0, 4), (2.1, 3), (2.2, 1)])
+        2.0  # Weight 4 dominates
+        >>> weighted_median([(2.0, 2), (2.1, 2), (2.2, 2)])
+        2.1  # Simple median when equal weights
+    """
+    if not values_with_weights:
+        return 0.0
+    
+    # Filter out zero/negative values and weights
+    valid = [(v, w) for v, w in values_with_weights if v > 0 and w > 0]
+    if not valid:
+        return 0.0
+    
+    # For weights >= 3 (strong sharps), use simple median of those
+    # This prioritizes tier-1 sharps without over-complicating
+    tier1_values = [v for v, w in valid if w >= 3]
+    if tier1_values:
+        return median(tier1_values)
+    
+    # Otherwise use all values (weight 1-2 books)
+    all_values = [v for v, w in valid]
+    return median(all_values) if all_values else 0.0
+
+
+def get_sharp_books_by_weight(
+    bookmaker_odds: Dict[str, float],
+    market_type: str = "main",
+    sport: str = None,
+    min_weight: int = 3
+) -> List[Tuple[str, float, int]]:
+    """
+    Filter bookmakers by weight threshold and return (book_key, odds, weight).
+    
+    Args:
+        bookmaker_odds: Dict of {book_key: odds}
+        market_type: "main" or "props"
+        sport: Optional sport code for overrides
+        min_weight: Minimum weight to include (default 3 = strong sharps only)
+    
+    Returns:
+        List of (book_key, odds, weight) tuples for books >= min_weight
+    """
+    from .book_weights import get_book_weight
+    
+    result = []
+    for book_key, odds in bookmaker_odds.items():
+        if odds <= 0:
+            continue
+        weight = get_book_weight(book_key, market_type, sport)
+        if weight >= min_weight:
+            result.append((book_key, odds, weight))
+    
+    return result

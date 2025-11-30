@@ -6,7 +6,8 @@ No cross-market contamination, no mixed data
 """
 from typing import Dict, List
 from .utils import snap_to_half
-from .fair_prices import build_fair_prices_simple
+from .fair_prices import build_fair_prices_two_way
+from .utils import devig_two_way
 from .config import AU_BOOKIES
 
 SHARP_BOOKIES = ["pinnacle", "draftkings", "fanduel", "betmgm"]
@@ -170,15 +171,31 @@ def process_player_props_event(event: Dict, prop_markets: List[str] = None) -> L
                 if total_implied > 107.0:
                     continue
                 
-                # Calculate fair prices
-                fair_prices = build_fair_prices_simple(
-                    pin_over, pin_under,
-                    None, None,
-                    weight_pinnacle=1.0,
-                    weight_betfair=0.0
+                # Build devigged odds dictionaries across sharp books (including Pinnacle)
+                bookmaker_odds_over: Dict[str, float] = {}
+                bookmaker_odds_under: Dict[str, float] = {}
+
+                for bk in bookmakers:
+                    bk_key = bk.get("key", "")
+                    if bk_key not in SHARP_BOOKIES:
+                        continue
+                    bk_odds = get_bookmaker_odds_for_market(bk, market_key, player_name, line)
+                    over_o = bk_odds.get("Over") if bk_odds else None
+                    under_o = bk_odds.get("Under") if bk_odds else None
+                    if over_o and under_o and over_o > 0 and under_o > 0:
+                        p_over_prob, p_under_prob = devig_two_way(over_o, under_o)
+                        if p_over_prob > 0 and p_under_prob > 0:
+                            bookmaker_odds_over[bk_key] = 1.0 / p_over_prob
+                            bookmaker_odds_under[bk_key] = 1.0 / p_under_prob
+
+                fair_prices_v2 = build_fair_prices_two_way(
+                    bookmaker_odds_over,
+                    bookmaker_odds_under,
+                    market_type="props",
+                    sport=event.get("sport_key")
                 )
-                
-                if not fair_prices:
+
+                if not fair_prices_v2:
                     continue
                 
                 # Get odds from all other bookmakers
@@ -205,8 +222,8 @@ def process_player_props_event(event: Dict, prop_markets: List[str] = None) -> L
                     "player": player_name,
                     "line": line,
                     "pinnacle": pinnacle_odds,
-                    "fair_over": fair_prices["A"],
-                    "fair_under": fair_prices["B"],
+                    "fair_over": fair_prices_v2["A"],
+                    "fair_under": fair_prices_v2["B"],
                     "bookmakers": all_bookmaker_odds
                 })
     

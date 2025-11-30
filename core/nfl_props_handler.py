@@ -11,8 +11,8 @@ Handles all NFL player prop markets from The Odds API including:
 - All alternate markets
 """
 from typing import Dict, List, Optional, Tuple
-from .utils import snap_to_half
-from .fair_prices import build_fair_prices_simple
+from .utils import snap_to_half, devig_two_way
+from .fair_prices import build_fair_prices_two_way
 from .config import AU_BOOKIES
 
 # Sharp books for NFL props (US books + Pinnacle)
@@ -232,11 +232,30 @@ def process_nfl_props_event(
                 if not sharp_odds_list:
                     continue
                 
-                # Calculate fair prices using Pinnacle only (100% weight)
-                fair_over = pinnacle_odds.get("Over", 0) if pinnacle_odds else 0
-                fair_under = pinnacle_odds.get("Under", 0) if pinnacle_odds else 0
-                
-                if fair_over <= 0 or fair_under <= 0:
+                # Build devigged odds dictionaries across sharp books
+                bookmaker_odds_over: Dict[str, float] = {}
+                bookmaker_odds_under: Dict[str, float] = {}
+                for bk in bookmakers:
+                    bkey = bk.get("key", "")
+                    if bkey not in SHARP_BOOKIES:
+                        continue
+                    odds_pair = extract_nfl_prop_odds(bk, player_name, market_key, line, include_au=False)
+                    over_o = odds_pair.get("Over") if odds_pair else None
+                    under_o = odds_pair.get("Under") if odds_pair else None
+                    if over_o and under_o and over_o > 0 and under_o > 0:
+                        p_over_prob, p_under_prob = devig_two_way(over_o, under_o)
+                        if p_over_prob > 0 and p_under_prob > 0:
+                            bookmaker_odds_over[bkey] = 1.0 / p_over_prob
+                            bookmaker_odds_under[bkey] = 1.0 / p_under_prob
+
+                fair_prices_v2 = build_fair_prices_two_way(
+                    bookmaker_odds_over,
+                    bookmaker_odds_under,
+                    market_type="props",
+                    sport=event.get("sport_key")
+                )
+
+                if not fair_prices_v2:
                     continue
                 
                 # Skip unbalanced/low-liquidity markets (wide Pinnacle spreads)
@@ -258,7 +277,7 @@ def process_nfl_props_event(
                     "market": market_key,
                     "player": player_name,
                     "line": line,
-                    "fair": {"over": fair_over, "under": fair_under},
+                    "fair": {"over": fair_prices_v2["A"], "under": fair_prices_v2["B"]},
                     "pinnacle": pinnacle_odds,
                     "bookmakers": all_book_odds
                 })
@@ -311,12 +330,32 @@ def process_nfl_props_event(
             if not sharp_odds_list:
                 continue
             
-            # Calculate fair prices using Pinnacle only
-            fair_yes = pinnacle_odds.get("Yes", 0) if pinnacle_odds else 0
-            fair_no = pinnacle_odds.get("No", 0) if pinnacle_odds else 0
-            
-            if fair_yes <= 0:
-                continue  # Yes/No markets must have at least Yes odds
+            # Build devigged odds dictionaries for Yes/No across sharp books
+            bookmaker_odds_yes: Dict[str, float] = {}
+            bookmaker_odds_no: Dict[str, float] = {}
+            for bk in bookmakers:
+                bkey = bk.get("key", "")
+                if bkey not in SHARP_BOOKIES:
+                    continue
+                odds_pair = extract_nfl_prop_odds(bk, player_name, market_key, line=None, include_au=False)
+                yes_o = odds_pair.get("Yes") if odds_pair else None
+                no_o = odds_pair.get("No") if odds_pair else None
+                if yes_o and no_o and yes_o > 0 and no_o > 0:
+                    p_yes_prob, p_no_prob = devig_two_way(yes_o, no_o)
+                    if p_yes_prob > 0 and p_no_prob > 0:
+                        bookmaker_odds_yes[bkey] = 1.0 / p_yes_prob
+                        bookmaker_odds_no[bkey] = 1.0 / p_no_prob
+
+            fair_prices_v2 = build_fair_prices_two_way(
+                bookmaker_odds_yes,
+                bookmaker_odds_no,
+                market_type="props",
+                sport=event.get("sport_key")
+            )
+
+            # Require at least Yes fair odds
+            if not fair_prices_v2:
+                continue
             
             # Collect odds from ALL bookmakers
             all_book_odds = {}
@@ -330,7 +369,7 @@ def process_nfl_props_event(
                 "market": market_key,
                 "player": player_name,
                 "line": None,  # No line for Yes/No markets
-                "fair": {"yes": fair_yes, "no": fair_no} if fair_no > 0 else {"yes": fair_yes},
+                "fair": {"yes": fair_prices_v2["A"], "no": fair_prices_v2.get("B", 0)},
                 "pinnacle": pinnacle_odds,
                 "bookmakers": all_book_odds
             })

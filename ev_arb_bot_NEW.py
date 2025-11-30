@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 # Import our clean handlers
-from core.h2h_handler import process_h2h_event
+from core.h2h_handler import process_h2h_event_v2
 from core.spreads_handler import process_spread_event
 from core.totals_handler import process_totals_event
 from core.player_props_handler_NEW import process_player_props_event
@@ -52,7 +52,8 @@ except ImportError:
 ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")
 ODDS_API_BASE = os.getenv("ODDS_API_BASE", "https://api.the-odds-api.com/v4")
 REGIONS = os.getenv("REGIONS", "au,us")
-MARKETS = os.getenv("MARKETS", "h2h,spreads,totals")
+# Disable player props for this run
+MARKETS = "h2h,spreads,totals"
 SPORTS = os.getenv("SPORTS", "basketball_nba")
 API_TIER = os.getenv("API_TIER", "medium").lower()  # low|medium|high
 INCLUDE_US_BOOKS = os.getenv("INCLUDE_US_BOOKS", "0").lower() in ("1", "true", "yes", "y")
@@ -220,8 +221,8 @@ def process_h2h_market(event: Dict, seen: Dict[str, bool]) -> int:
     event_id = event.get("id", "")
     commence_time = event.get("commence_time", "")
     
-    # Get fair prices using clean handler
-    result = process_h2h_event(event, home_team, away_team, BETFAIR_COMMISSION)
+    # Get fair prices using unified handler (v2 with book_weights)
+    result = process_h2h_event_v2(event, home_team, away_team, sport_key, BETFAIR_COMMISSION)
     
     if not result:
         return 0
@@ -311,7 +312,7 @@ def process_h2h_market(event: Dict, seen: Dict[str, bool]) -> int:
                     "market": "h2h",
                     "selection": home_team,
                     "bookmaker": bookmakers_str,
-                    "Book": f"{home_odds:.3f}",
+                    "Odds": f"{home_odds:.3f}",
                     "Fair": f"{fair_home:.3f}",
                     "EV": f"{edge*100:.2f}%",
                     "prob": f"{fair_prob*100:.1f}%",
@@ -364,7 +365,7 @@ def process_h2h_market(event: Dict, seen: Dict[str, bool]) -> int:
                     "market": "h2h",
                     "selection": away_team,
                     "bookmaker": bookmakers_str,
-                    "Book": f"{away_odds:.3f}",
+                    "Odds": f"{away_odds:.3f}",
                     "Fair": f"{fair_away:.3f}",
                     "EV": f"{edge*100:.2f}%",
                     "prob": f"{fair_prob*100:.1f}%",
@@ -420,7 +421,7 @@ def process_spreads_market(event: Dict, seen: Dict[str, bool]) -> int:
     
     # Process each spread line
     for line in pinnacle_lines:
-        result = process_spread_event(event, line, home_team, away_team, BETFAIR_COMMISSION)
+        result = process_spread_event(event, line, home_team, away_team, BETFAIR_COMMISSION, sport=sport_key)
         
         if not result:
             continue
@@ -508,7 +509,7 @@ def process_spreads_market(event: Dict, seen: Dict[str, bool]) -> int:
                     "market": f"spread_{line}",
                     "selection": home_key,
                     "bookmaker": bookmakers_str,
-                    "Book": f"{home_odds:.3f}",
+                    "Odds": f"{home_odds:.3f}",
                     "Fair": f"{fair_home:.3f}",
                     "EV": f"{edge*100:.2f}%",
                     "prob": f"{fair_prob*100:.1f}%",
@@ -561,7 +562,7 @@ def process_spreads_market(event: Dict, seen: Dict[str, bool]) -> int:
                     "market": f"spread_{line}",
                     "selection": away_key,
                     "bookmaker": bookmakers_str,
-                    "Book": f"{away_odds:.3f}",
+                    "Odds": f"{away_odds:.3f}",
                     "Fair": f"{fair_away:.3f}",
                     "EV": f"{edge*100:.2f}%",
                     "prob": f"{fair_prob*100:.1f}%",
@@ -617,7 +618,7 @@ def process_totals_market(event: Dict, seen: Dict[str, bool]) -> int:
     
     # Process each total line
     for line in pinnacle_lines:
-        result = process_totals_event(event, line, BETFAIR_COMMISSION)
+        result = process_totals_event(event, line, BETFAIR_COMMISSION, sport=sport_key)
         
         if not result:
             continue
@@ -702,7 +703,7 @@ def process_totals_market(event: Dict, seen: Dict[str, bool]) -> int:
                     "market": f"total_{line}",
                     "selection": f"Over_{line}",
                     "bookmaker": bookmakers_str,
-                    "Book": f"{over_odds:.3f}",
+                    "Odds": f"{over_odds:.3f}",
                     "Fair": f"{fair_over:.3f}",
                     "EV": f"{edge*100:.2f}%",
                     "prob": f"{fair_prob*100:.1f}%",
@@ -755,7 +756,7 @@ def process_totals_market(event: Dict, seen: Dict[str, bool]) -> int:
                     "market": f"total_{line}",
                     "selection": f"Under_{line}",
                     "bookmaker": bookmakers_str,
-                    "Book": f"{under_odds:.3f}",
+                    "Odds": f"{under_odds:.3f}",
                     "Fair": f"{fair_under:.3f}",
                     "EV": f"{edge*100:.2f}%",
                     "prob": f"{fair_prob*100:.1f}%",
@@ -902,7 +903,7 @@ def process_player_props_market(event: Dict, seen: Dict[str, bool], prop_markets
                     "market": market_display,
                     "selection": selection_display,
                     "bookmaker": bookmakers_str,
-                    "Book": f"{over_odds:.3f}",
+                    "Odds": f"{over_odds:.3f}",
                     "Fair": f"{fair_over:.3f}",
                     "EV": f"{edge*100:.2f}%",
                     "prob": f"{fair_prob*100:.1f}%",
@@ -958,7 +959,7 @@ def process_player_props_market(event: Dict, seen: Dict[str, bool], prop_markets
                     "market": market_display,
                     "selection": selection_display,
                     "bookmaker": bookmakers_str,
-                    "Book": f"{under_odds:.3f}",
+                    "Odds": f"{under_odds:.3f}",
                     "Fair": f"{fair_under:.3f}",
                     "EV": f"{edge*100:.2f}%",
                     "prob": f"{fair_prob*100:.1f}%",
@@ -1070,7 +1071,7 @@ def process_nfl_props_market(event: Dict, seen: Dict[str, bool], prop_markets: L
                         "market": market_display,
                         "selection": selection_display,
                         "bookmaker": bookmakers_str,
-                        "Book": f"{yes_odds:.3f}",
+                        "Odds": f"{yes_odds:.3f}",
                         "Fair": f"{fair_yes:.3f}",
                         "EV": f"{edge*100:.2f}%",
                         "prob": f"{fair_prob*100:.1f}%",
@@ -1140,7 +1141,7 @@ def process_nfl_props_market(event: Dict, seen: Dict[str, bool], prop_markets: L
                             "market": market_display,
                             "selection": selection_display,
                             "bookmaker": bookmakers_str,
-                            "Book": f"{no_odds:.3f}",
+                            "Odds": f"{no_odds:.3f}",
                             "Fair": f"{fair_no:.3f}",
                             "EV": f"{edge*100:.2f}%",
                             "prob": f"{fair_prob*100:.1f}%",
@@ -1217,7 +1218,7 @@ def process_nfl_props_market(event: Dict, seen: Dict[str, bool], prop_markets: L
                         "market": market_display,
                         "selection": selection_display,
                         "bookmaker": bookmakers_str,
-                        "Book": f"{over_odds:.3f}",
+                        "Odds": f"{over_odds:.3f}",
                         "Fair": f"{fair_over:.3f}",
                         "EV": f"{edge*100:.2f}%",
                         "prob": f"{fair_prob*100:.1f}%",
@@ -1286,7 +1287,7 @@ def process_nfl_props_market(event: Dict, seen: Dict[str, bool], prop_markets: L
                         "market": market_display,
                         "selection": selection_display,
                         "bookmaker": bookmakers_str,
-                        "Book": f"{under_odds:.3f}",
+                        "Odds": f"{under_odds:.3f}",
                         "Fair": f"{fair_under:.3f}",
                         "EV": f"{edge*100:.2f}%",
                         "prob": f"{fair_prob*100:.1f}%",
@@ -1546,4 +1547,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
 

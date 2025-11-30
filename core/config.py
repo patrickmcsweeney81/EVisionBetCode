@@ -1,15 +1,32 @@
 """
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env if present
+load_dotenv()
 Centralized configuration for bookmakers and API settings.
 Edit bookmaker lists here to add/remove books from analysis.
+
+NOTE (v2.0): book_weights.py module provides flexible 0-4 weight system.
+The lists below are maintained for backward compatibility but new code
+should use book_weights.get_book_weight() for dynamic weight lookup.
 """
+
+# Optional external enrichment integrations:
+# - BALLDONTLIE (NBA player context): set BALLDONTLIE_ENABLED=1 to attach recent form/minutes
+#   to each NBA player prop record (adds player_context field). Safe, low-latency.
+
 
 # ============================================================================
 # SHARP BOOKMAKERS (used for fair price calculation)
+# DEPRECATED v2.0: All handlers now use book_weights.py for dynamic weight lookup.
+# This list is retained only for legacy compatibility with old monolithic bot.
+# New code: use book_weights.list_books_by_weight(market_type, min_weight=3)
 # ============================================================================
 SHARP_BOOKIES = [
-    "pinnacle",          # Primary sharp (REQUIRED for main markets)
-    "betfair_ex_eu",     # Betfair Europe
-    "betfair_ex_au",     # Betfair Australia
+    "pinnacle",          # Primary sharp (weight 4)
+    "betfair_ex_eu",     # Betfair Europe (weight 3)
+    "betfair_ex_au",     # Betfair Australia (weight 3)
     "draftkings",        # DraftKings (best for player props)
     "fanduel",           # FanDuel (best for player props)
     "betmgm",            # BetMGM (good for player props)
@@ -115,6 +132,8 @@ ALL_BOOKIES_ORDERED = [
 
 # ============================================================================
 # FAIR PRICE WEIGHTS
+# DEPRECATED: Use book_weights.py 0-4 scale system instead.
+# These percentage weights are kept for legacy code compatibility only.
 # ============================================================================
 WEIGHT_PINNACLE = 0.75       # Pinnacle gets 75% weight
 WEIGHT_BETFAIR = 0.0         # Betfair excluded from fair calculation
@@ -221,8 +240,13 @@ SPORT_PROP_MARKETS = {
 # ============================================================================
 # BETFAIR CONFIGURATION
 # ============================================================================
+
 BETFAIR_BOOKIES = ["betfair_ex_eu", "betfair_ex_au"]  # Betfair exchanges to exclude
-BETFAIR_COMMISSION = 0.06    # 6% commission rate (override with .env)
+BETFAIR_COMMISSION = float(os.getenv("BETFAIR_COMMISSION", 0.06))    # 6% commission rate (override with .env)
+
+# Betfair API keys (active and testing)
+BETFAIR_API_KEY_ACTIVE = os.getenv("BETFAIR_API_KEY_ACTIVE", "")
+BETFAIR_API_KEY_TESTING = os.getenv("BETFAIR_API_KEY_TESTING", "")
 
 # ============================================================================
 # THRESHOLDS & FILTERS

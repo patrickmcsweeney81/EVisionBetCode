@@ -66,11 +66,14 @@ cat data/all_odds_analysis.csv | head -20
 ✅ **Correct probabilities** - Based on fair odds, not book odds  
 ✅ **Flexible filtering** - Test different EV/prob thresholds instantly  
 ✅ **Easier debugging** - All data in one place  
+✅ **Unified fair pricing** - Single weight source (`core/book_weights.py`) used by all handlers  
+✅ **Legacy paths isolated** - Deprecated percentage-based functions retained only for backward compatibility
 
 ## Console Output Still Shows EV
 
 The bot still prints EV opportunities to console during scan:
-```
+
+```plaintext
 [EV] sportsbet         Josh Giddey          U 1.5 1.800 (fair=1.711, edge=5.2%, stake=$15)
 ```
 
@@ -79,6 +82,11 @@ This is just for monitoring - the real analysis happens with filter_ev_hits.py.
 ## Migration Note
 
 If you have scripts that read `hits_ev.csv`, update them to:
+
 1. Use `filter_ev_hits.py` to generate filtered CSV first
 2. Read from `hits_ev_filtered.csv` instead
 3. Or read directly from `all_odds_analysis.csv` and apply your own filters
+
+### Fair Price Migration Status
+
+All market handlers (H2H, spreads, totals, player props, NFL props) now use the v2 weighted median fair price model backed by `core/book_weights.py`. Legacy functions (`build_fair_prices_simple`, `master_fair_odds`) remain solely for older scripts/tests and will be removed after final validation.

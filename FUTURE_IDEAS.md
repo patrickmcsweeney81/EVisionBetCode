@@ -1,5 +1,34 @@
 # Future Enhancement Ideas
 
+---
+
+## Fallback/Alert System for Missing Bookies/Markets
+
+**Concept:** Implement logic to alert (e.g., via Telegram) when a key bookmaker or market is missing odds for a major event.
+
+**Implementation Approach:**
+- Monitor API responses for missing bookies/markets
+- Trigger alert/notification if a critical bookie or market is absent
+- Configurable for which bookies/markets are critical
+
+**Benefits:**
+- Immediate awareness of data gaps
+- Enables manual intervention or alternative sourcing
+
+---
+
+## Alternative Data Sources for AU Bookies
+
+**Concept:** Explore and prototype alternative APIs or scraping solutions for AU bookies with persistent OddsAPI gaps.
+
+**Implementation Approach:**
+- Research and test unofficial APIs, web scraping, or paid feeds (e.g., BetMakers)
+- Integrate as fallback or supplement to OddsAPI
+
+**Benefits:**
+- Improved coverage for hard-to-get bookies/markets
+- Reduces reliance on a single data provider
+
 This file contains ideas for potential future improvements to the EV bot. These are not currently implemented but could be valuable additions.
 
 ---

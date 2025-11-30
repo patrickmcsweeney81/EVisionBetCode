@@ -46,9 +46,9 @@ def log_all_odds(csv_path: Path, row: Dict):
     # Same structure as hits_ev.csv for easy comparison
     fieldnames = [
         "Time",           # Event commence time (Perth local time)
-        "sport", "event", "market", "selection",
+        "sport", "event", "market", "selection", "O/U",
         "bookmaker",      # Which bookmaker has this opportunity
-        "Book",           # Bookmaker odds
+        "Odds",           # Bookmaker odds
         "Fair",           # Fair price
         "EV%",            # Edge percentage
         "Prob",           # Implied probability of fair price

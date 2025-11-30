@@ -9,8 +9,10 @@ KEY RULES:
 """
 from typing import Dict, List, Optional, Tuple
 from .utils import snap_to_half, effective_back_odds_betfair
-from .fair_prices import build_fair_prices_simple
+from .fair_prices import build_fair_prices_two_way  # unified v2 fair prices
+from .utils import devig_two_way
 from .config import AU_BOOKIES
+from .balldontlie import fetch_player_context_if_enabled  # optional NBA enrichment
 
 # Sharp books for player props (Pinnacle + major US books)
 SHARP_BOOKIES = ["pinnacle", "draftkings", "fanduel", "betmgm"]
@@ -199,31 +201,53 @@ def process_player_props_event(
                     # print(f"[SKIP] {player_name} {market_key} {line} - Low liquidity ({total_implied:.1f}%)")
                     continue  # Skip low-liquidity trap markets
                 
-                # For player props, use Pinnacle only as fair price (US books can be soft)
-                # Could add other sharp books if available, but Pinnacle is most reliable
-                fair_prices = build_fair_prices_simple(
-                    pin_over, pin_under,
-                    None, None,  # No Betfair for props typically
-                    weight_pinnacle=1.0,
-                    weight_betfair=0.0
+                # Build devigged odds dictionaries for Over/Under across sharp books
+                bookmaker_odds_over: Dict[str, float] = {}
+                bookmaker_odds_under: Dict[str, float] = {}
+
+                # Collect sharp odds (including Pinnacle) and devig per book
+                for bk in bookmakers:
+                    bkey = bk.get("key", "")
+                    if bkey not in SHARP_BOOKIES:
+                        continue
+                    prop_odds_sharp = extract_player_prop_odds(bk, player_name, line, market_key, include_au=False)
+                    over_o = prop_odds_sharp.get("Over") if prop_odds_sharp else None
+                    under_o = prop_odds_sharp.get("Under") if prop_odds_sharp else None
+                    if over_o and under_o and over_o > 0 and under_o > 0:
+                        p_over_prob, p_under_prob = devig_two_way(over_o, under_o)
+                        if p_over_prob > 0 and p_under_prob > 0:
+                            bookmaker_odds_over[bkey] = 1.0 / p_over_prob
+                            bookmaker_odds_under[bkey] = 1.0 / p_under_prob
+
+                fair_prices_v2 = build_fair_prices_two_way(
+                    bookmaker_odds_over,
+                    bookmaker_odds_under,
+                    market_type="props",
+                    sport=event.get("sport_key")
                 )
-                
-                if not fair_prices:
+
+                if not fair_prices_v2:
                     continue
                 
+                enrichment = None
+                # Only attempt enrichment for NBA contexts (sport_key contains basketball_nba)
+                if (event.get("sport_key") or "").startswith("basketball_nba"):
+                    enrichment = fetch_player_context_if_enabled(player_name)
+
                 results.append({
                     "market": market_key,
                     "player": player_name,
                     "line": line,
                     "fair": {
-                        "over": fair_prices["A"],
-                        "under": fair_prices["B"]
+                        "over": fair_prices_v2["A"],
+                        "under": fair_prices_v2["B"]
                     },
                     "pinnacle": {
                         "Over": pin_over,
                         "Under": pin_under
                     },
-                    "bookmakers": all_book_odds
+                    "bookmakers": all_book_odds,
+                    "player_context": enrichment
                 })
     
     return results

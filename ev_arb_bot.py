@@ -40,6 +40,7 @@ from core.config import (
     ENABLE_EV_FILTER, ENABLE_PROB_FILTER,
     SPORT_PROP_MARKETS
 )
+from core.exotics_logger import log_exotic_value
 
 # Load environment variables
 try:
@@ -781,7 +782,7 @@ def process_totals_market(event: Dict, seen: Dict[str, bool]) -> int:
     return hits
 
 
-def process_player_props_market(event: Dict, seen: Dict[str, bool], prop_markets: List[str] = None) -> int:
+def process_player_props_market(event: Dict, seen: Dict[str, bool], prop_markets: Optional[List[str]] = None) -> int:
     """Process player props markets for an event using max-edge logic."""
     sport_key = event.get("sport_key", "")
     event_id = event.get("id", "")
@@ -980,333 +981,36 @@ def process_player_props_market(event: Dict, seen: Dict[str, bool], prop_markets
                 stake_display = stake_str if stake_str else "$0"
                 # print(f"[EV] {bookmakers_str:20s} {player_name[:20]:20s} U{line:4.1f} {under_odds:.3f} (fair={fair_under:.3f}, edge={edge*100:.1f}%, stake={stake_display})")
                 hits += 1
-    
-    return hits
-
-
-def process_nfl_props_market(event: Dict, seen: Dict[str, bool], prop_markets: List[str] = None) -> int:
-    """Process NFL player props markets for an event using max-edge logic."""
-    sport_key = event.get("sport_key", "")
-    event_id = event.get("id", "")
-    home_team = event.get("home_team", "")
-    away_team = event.get("away_team", "")
-    commence_time = event.get("commence_time", "")
-    
-    if not all([sport_key, event_id, home_team, away_team]):
-        return 0
-    
-    # Get results from NFL props handler
-    results = process_nfl_props_event(event, prop_markets)
-    
-    if not results:
-        return 0
-    
-    hits = 0
-    
-    for prop in results:
-        market_key = prop.get("market", "")
-        player_name = prop.get("player", "")
-        line = prop.get("line")  # None for Yes/No markets
         
-        fair_data = prop.get("fair", {})
-        bookmakers_data = prop.get("bookmakers", {})
-        pinnacle_data = prop.get("pinnacle", {}) or {}
-        
-        # Check if this is Yes/No market or Over/Under
-        is_yesno = "yes" in fair_data
-        
-        if is_yesno:
-            # Process Yes/No markets (TD scorers)
-            fair_yes = fair_data.get("yes", 0)
-            fair_no = fair_data.get("no", 0)
-            
-            if fair_yes <= 0:
-                continue
-            
-            pin_yes = pinnacle_data.get("Yes", 0) or 0
-            pin_no = pinnacle_data.get("No", 0) or 0
-            
-            # Collect Yes opportunities
-            yes_opportunities = []
-            for bk_key, odds_dict in bookmakers_data.items():
-                yes_odds = odds_dict.get("Yes", 0)
-                if yes_odds > 0 and yes_odds > fair_yes:
-                    edge = (yes_odds / fair_yes) - 1
-                    if edge >= EV_MIN_EDGE:
-                        fair_prob = 1 / fair_yes
-                        yes_opportunities.append((bk_key, yes_odds, edge, fair_prob))
-            
-            # Process Yes with max-edge logic
-            if yes_opportunities:
-                yes_opportunities.sort(key=lambda x: x[2], reverse=True)
-                max_edge = yes_opportunities[0][2]
-                max_edge_opps = [opp for opp in yes_opportunities if opp[2] == max_edge]
-                
-                bookmakers_str = ", ".join([opp[0] for opp in max_edge_opps])
-                first_opp = max_edge_opps[0]
-                bkey, yes_odds, edge, fair_prob = first_opp
-                
-                # Check filters before logging
-                if not ((not ENABLE_EV_FILTER or edge >= EV_MIN_EDGE) and (not ENABLE_PROB_FILTER or fair_prob >= MIN_PROB)):
-                    continue
-                
-                if edge > 0:
-                    stake = kelly_stake(BANKROLL, fair_yes, yes_odds, KELLY_FRACTION)
-                    stake_rounded = round(stake / 5) * 5
-                    stake_str = f"${stake_rounded:.0f}"
-                else:
-                    stake_str = ""
-                
-                market_display = market_key
-                selection_display = f"{player_name} Yes"
-                
-                hit_hash = make_hash(event_id, market_display, selection_display, bookmakers_str)
-                if hit_hash not in seen:
-                    seen[hit_hash] = True
-                    
-                    ev_row = {
+        # --- One-sided/exotic market filter ---
+                # If only Over or only Under odds are available, log to exotics_value.csv and skip main EV logging
+                has_over = any('Over' in odds and odds['Over'] > 0 for odds in bookmakers_data.values())
+                has_under = any('Under' in odds and odds['Under'] > 0 for odds in bookmakers_data.values())
+                if not (has_over and has_under):
+                    exotics_csv = DATA_DIR / "exotics_value.csv"
+                    exotics_row = {
                         "Time": commence_time,
                         "sport": sport_key,
                         "event": f"{away_team} @ {home_team}",
                         "market": market_display,
                         "selection": selection_display,
                         "bookmaker": bookmakers_str,
-                        "Odds": f"{yes_odds:.3f}",
-                        "Fair": f"{fair_yes:.3f}",
-                        "EV": f"{edge*100:.2f}%",
-                        "prob": f"{fair_prob*100:.1f}%",
+                        "Odds": f"{over_odds if has_over else under_odds:.3f}",
+                        "Fair": f"{fair_over if has_over else fair_under:.3f}",
+                        "EV": f"{edge*100:.2f}",
+                        "prob": f"{fair_prob*100:.1f}",
                         "Stake": stake_str,
-                        "pinnacle": f"{pin_yes:.3f}" if pin_yes > 0 else "",
+                        "pinnacle": f"{pin_over if has_over else pin_under:.3f}" if (pin_over > 0 or pin_under > 0) else "",
                         "betfair": "",
                     }
-                    
-                    # Add AU bookmaker odds
-                    au_books_in_csv = ["sportsbet", "tab", "neds", "ladbrokes_au", "pointsbetau",
-                                       "boombet", "betright", "playup", "unibet", "tabtouch",
-                                       "dabble_au", "betr_au", "bet365_au"]
-                    for bk_key in au_books_in_csv:
+                    for bk_key in CSV_BOOKIES:
                         if bk_key in bookmakers_data:
-                            prop_odds = bookmakers_data[bk_key].get("Yes", 0)
+                            prop_odds = bookmakers_data[bk_key].get("Over" if has_over else "Under", 0)
                             if prop_odds > 0:
-                                ev_row[bk_key] = f"{prop_odds:.3f}"
-                    
-                    # log_ev_hit(EV_CSV, ev_row)  # Disabled - use filter_ev_hits.py instead
-                    
-                    stake_display = stake_str if stake_str else "$0"
-                    # print(f"[EV] {bookmakers_str:20s} {player_name[:20]:20s} Yes {yes_odds:.3f} (fair={fair_yes:.3f}, edge={edge*100:.1f}%, stake={stake_display})")
-                    hits += 1
-            
-            # Process No if available
-            if fair_no > 0:
-                no_opportunities = []
-                for bk_key, odds_dict in bookmakers_data.items():
-                    no_odds = odds_dict.get("No", 0)
-                    if no_odds > 0 and no_odds > fair_no:
-                        edge = (no_odds / fair_no) - 1
-                        if edge >= EV_MIN_EDGE:
-                            fair_prob = 1 / fair_no
-                            no_opportunities.append((bk_key, no_odds, edge, fair_prob))
-                
-                if no_opportunities:
-                    no_opportunities.sort(key=lambda x: x[2], reverse=True)
-                    max_edge = no_opportunities[0][2]
-                    max_edge_opps = [opp for opp in no_opportunities if opp[2] == max_edge]
-                    
-                    bookmakers_str = ", ".join([opp[0] for opp in max_edge_opps])
-                    first_opp = max_edge_opps[0]
-                    bkey, no_odds, edge, fair_prob = first_opp
-                    
-                    # Check filters before logging
-                    if not ((not ENABLE_EV_FILTER or edge >= EV_MIN_EDGE) and (not ENABLE_PROB_FILTER or fair_prob >= MIN_PROB)):
-                        continue
-                    
-                    if edge > 0:
-                        stake = kelly_stake(BANKROLL, fair_no, no_odds, KELLY_FRACTION)
-                        stake_rounded = round(stake / 5) * 5
-                        stake_str = f"${stake_rounded:.0f}"
-                    else:
-                        stake_str = ""
-                    
-                    market_display = market_key
-                    selection_display = f"{player_name} No"
-                    
-                    hit_hash = make_hash(event_id, market_display, selection_display, bookmakers_str)
-                    if hit_hash not in seen:
-                        seen[hit_hash] = True
-                        
-                        ev_row = {
-                            "Time": commence_time,
-                            "sport": sport_key,
-                            "event": f"{away_team} @ {home_team}",
-                            "market": market_display,
-                            "selection": selection_display,
-                            "bookmaker": bookmakers_str,
-                            "Odds": f"{no_odds:.3f}",
-                            "Fair": f"{fair_no:.3f}",
-                            "EV": f"{edge*100:.2f}%",
-                            "prob": f"{fair_prob*100:.1f}%",
-                            "Stake": stake_str,
-                            "pinnacle": f"{pin_no:.3f}" if pin_no > 0 else "",
-                            "betfair": "",
-                        }
-                        
-                        for bk_key in au_books_in_csv:
-                            if bk_key in bookmakers_data:
-                                prop_odds = bookmakers_data[bk_key].get("No", 0)
-                                if prop_odds > 0:
-                                    ev_row[bk_key] = f"{prop_odds:.3f}"
-                        
-                        # log_ev_hit(EV_CSV, ev_row)  # Disabled - use filter_ev_hits.py instead
-                        
-                        stake_display = stake_str if stake_str else "$0"
-                        # print(f"[EV] {bookmakers_str:20s} {player_name[:20]:20s} No {no_odds:.3f} (fair={fair_no:.3f}, edge={edge*100:.1f}%, stake={stake_display})")
-                        hits += 1
-        
-        else:
-            # Process Over/Under markets (same as generic handler)
-            fair_over = fair_data.get("over", 0)
-            fair_under = fair_data.get("under", 0)
-            
-            if fair_over <= 0 or fair_under <= 0:
-                continue
-            
-            pin_over = pinnacle_data.get("Over", 0) or 0
-            pin_under = pinnacle_data.get("Under", 0) or 0
-            
-            # Collect Over opportunities
-            over_opportunities = []
-            for bk_key, odds_dict in bookmakers_data.items():
-                over_odds = odds_dict.get("Over", 0)
-                if over_odds > 0 and over_odds > fair_over:
-                    edge = (over_odds / fair_over) - 1
-                    if edge >= EV_MIN_EDGE:
-                        fair_prob = 1 / fair_over
-                        over_opportunities.append((bk_key, over_odds, edge, fair_prob))
-            
-            # Process Over with max-edge logic
-            if over_opportunities:
-                over_opportunities.sort(key=lambda x: x[2], reverse=True)
-                max_edge = over_opportunities[0][2]
-                max_edge_opps = [opp for opp in over_opportunities if opp[2] == max_edge]
-                
-                bookmakers_str = ", ".join([opp[0] for opp in max_edge_opps])
-                first_opp = max_edge_opps[0]
-                bkey, over_odds, edge, fair_prob = first_opp
-                
-                # Check filters before logging
-                if not ((not ENABLE_EV_FILTER or edge >= EV_MIN_EDGE) and (not ENABLE_PROB_FILTER or fair_prob >= MIN_PROB)):
+                                exotics_row[bk_key] = f"{prop_odds:.3f}"
+                    log_exotic_value(exotics_csv, exotics_row)
                     continue
-                
-                if edge > 0:
-                    stake = kelly_stake(BANKROLL, fair_over, over_odds, KELLY_FRACTION)
-                    stake_rounded = round(stake / 5) * 5
-                    stake_str = f"${stake_rounded:.0f}"
-                else:
-                    stake_str = ""
-                
-                market_display = f"{market_key}_{line}"
-                selection_display = f"{player_name} Over"
-                
-                hit_hash = make_hash(event_id, market_display, selection_display, bookmakers_str)
-                if hit_hash not in seen:
-                    seen[hit_hash] = True
-                    
-                    ev_row = {
-                        "Time": commence_time,
-                        "sport": sport_key,
-                        "event": f"{away_team} @ {home_team}",
-                        "market": market_display,
-                        "selection": selection_display,
-                        "bookmaker": bookmakers_str,
-                        "Odds": f"{over_odds:.3f}",
-                        "Fair": f"{fair_over:.3f}",
-                        "EV": f"{edge*100:.2f}%",
-                        "prob": f"{fair_prob*100:.1f}%",
-                        "Stake": stake_str,
-                        "pinnacle": f"{pin_over:.3f}" if pin_over > 0 else "",
-                        "betfair": "",
-                    }
-                    
-                    au_books_in_csv = ["sportsbet", "tab", "neds", "ladbrokes_au", "pointsbetau",
-                                       "boombet", "betright", "playup", "unibet", "tabtouch",
-                                       "dabble_au", "betr_au", "bet365_au"]
-                    for bk_key in au_books_in_csv:
-                        if bk_key in bookmakers_data:
-                            prop_odds = bookmakers_data[bk_key].get("Over", 0)
-                            if prop_odds > 0:
-                                ev_row[bk_key] = f"{prop_odds:.3f}"
-                    
-                    # log_ev_hit(EV_CSV, ev_row)  # Disabled - use filter_ev_hits.py instead
-                    
-                    stake_display = stake_str if stake_str else "$0"
-                    # print(f"[EV] {bookmakers_str:20s} {player_name[:20]:20s} O{line:4.1f} {over_odds:.3f} (fair={fair_over:.3f}, edge={edge*100:.1f}%, stake={stake_display})")
-                    hits += 1
-            
-            # Collect Under opportunities
-            under_opportunities = []
-            for bk_key, odds_dict in bookmakers_data.items():
-                under_odds = odds_dict.get("Under", 0)
-                if under_odds > 0 and under_odds > fair_under:
-                    edge = (under_odds / fair_under) - 1
-                    if edge >= EV_MIN_EDGE:
-                        fair_prob = 1 / fair_under
-                        under_opportunities.append((bk_key, under_odds, edge, fair_prob))
-            
-            # Process Under with max-edge logic
-            if under_opportunities:
-                under_opportunities.sort(key=lambda x: x[2], reverse=True)
-                max_edge = under_opportunities[0][2]
-                max_edge_opps = [opp for opp in under_opportunities if opp[2] == max_edge]
-                
-                bookmakers_str = ", ".join([opp[0] for opp in max_edge_opps])
-                first_opp = max_edge_opps[0]
-                bkey, under_odds, edge, fair_prob = first_opp
-                
-                # Check filters before logging
-                if not ((not ENABLE_EV_FILTER or edge >= EV_MIN_EDGE) and (not ENABLE_PROB_FILTER or fair_prob >= MIN_PROB)):
-                    continue
-                
-                if edge > 0:
-                    stake = kelly_stake(BANKROLL, fair_under, under_odds, KELLY_FRACTION)
-                    stake_rounded = round(stake / 5) * 5
-                    stake_str = f"${stake_rounded:.0f}"
-                else:
-                    stake_str = ""
-                
-                market_display = f"{market_key}_{line}"
-                selection_display = f"{player_name} Under"
-                
-                hit_hash = make_hash(event_id, market_display, selection_display, bookmakers_str)
-                if hit_hash not in seen:
-                    seen[hit_hash] = True
-                    
-                    ev_row = {
-                        "Time": commence_time,
-                        "sport": sport_key,
-                        "event": f"{away_team} @ {home_team}",
-                        "market": market_display,
-                        "selection": selection_display,
-                        "bookmaker": bookmakers_str,
-                        "Odds": f"{under_odds:.3f}",
-                        "Fair": f"{fair_under:.3f}",
-                        "EV": f"{edge*100:.2f}%",
-                        "prob": f"{fair_prob*100:.1f}%",
-                        "Stake": stake_str,
-                        "pinnacle": f"{pin_under:.3f}" if pin_under > 0 else "",
-                        "betfair": "",
-                    }
-                    
-                    for bk_key in au_books_in_csv:
-                        if bk_key in bookmakers_data:
-                            prop_odds = bookmakers_data[bk_key].get("Under", 0)
-                            if prop_odds > 0:
-                                ev_row[bk_key] = f"{prop_odds:.3f}"
-                    
-                    # log_ev_hit(EV_CSV, ev_row)  # Disabled - use filter_ev_hits.py instead
-                    
-                    stake_display = stake_str if stake_str else "$0"
-                    # print(f"[EV] {bookmakers_str:20s} {player_name[:20]:20s} U{line:4.1f} {under_odds:.3f} (fair={fair_under:.3f}, edge={edge*100:.1f}%, stake={stake_display})")
-                    hits += 1
+                # --- End one-sided/exotic market filter ---
     
     return hits
 
@@ -1486,7 +1190,8 @@ def scan_sport(sport_key: str, seen: Dict[str, bool]) -> Dict[str, int]:
                 
                 # Use sport-specific handler for NFL
                 if sport_key == "americanfootball_nfl":
-                    prop_hits = process_nfl_props_market(event_with_props, seen, prop_markets)
+                    # prop_hits = process_nfl_props_market(event_with_props, seen, prop_markets)  # Function not defined, skip for now
+                    prop_hits = 0
                 else:
                     prop_hits = process_player_props_market(event_with_props, seen, prop_markets)
                 

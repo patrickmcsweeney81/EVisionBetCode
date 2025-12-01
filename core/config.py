@@ -1,9 +1,5 @@
-"""
-import os
-from dotenv import load_dotenv
 
-# Load environment variables from .env if present
-load_dotenv()
+"""
 Centralized configuration for bookmakers and API settings.
 Edit bookmaker lists here to add/remove books from analysis.
 
@@ -11,6 +7,12 @@ NOTE (v2.0): book_weights.py module provides flexible 0-4 weight system.
 The lists below are maintained for backward compatibility but new code
 should use book_weights.get_book_weight() for dynamic weight lookup.
 """
+
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env if present
+load_dotenv()
 
 # Optional external enrichment integrations:
 # - BALLDONTLIE (NBA player context): set BALLDONTLIE_ENABLED=1 to attach recent form/minutes

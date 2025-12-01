@@ -73,12 +73,22 @@ Legacy (Deprecated): `master_fair_odds` and `build_fair_prices_simple` kept temp
    ```powershell
    pip install requests python-dotenv
    ```
-3. Run modular bot:
+
+3. Run the bot (main entry point):
    ```powershell
-   python ev_arb_bot_NEW.py
+   python ev_arb_bot.py
    ```
 4. (Optional) Generate filtered EV summary via your filter script (`filter_ev_hits.py`).
 5. Inspect `data/all_odds_analysis.csv` & `data/all_odds.csv`.
+
+## Running Tests
+Tests are standardized to use `pytest`. To run all tests:
+```powershell
+pytest
+```
+Or use the Python Test Explorer extension in VS Code for a graphical interface.
+
+All test files are in the `tests/` directory and follow the `test_*.py` naming convention.
 
 ## Customization
 - Sports: set `SPORTS=basketball_nba,americanfootball_nfl` etc.

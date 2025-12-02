@@ -5,33 +5,36 @@ Separated for clean architecture and easy maintenance.
 import csv
 from pathlib import Path
 from typing import Dict
-from core.config import ALL_BOOKIES_ORDERED
+
+from core.config import CSV_HEADERS
 
 
 def log_ev_hit(csv_path: Path, row: Dict):
     """Log a +EV opportunity to CSV with all bookmaker odds."""
     file_exists = csv_path.exists()
     
-    # Base columns + selected bookmaker columns (AU books only, no US/international)
-    fieldnames = [
-        "Time", "sport", "event", "market", "selection",
-        "bookmaker", "Book", "Fair", "EV", "prob", "Stake",
-        # Sharp books for reference
-        "pinnacle", "betfair",
-        # AU bookmakers (from Odds API widget list)
-        "sportsbet", "tab", "neds", "ladbrokes_au", "pointsbetau",
-        "boombet", "betright", "playup", "unibet", "tabtouch",
-        "dabble_au", "betr_au", "bet365_au"
-    ]
-    
+    fieldnames = CSV_HEADERS
+    key_map = {
+        "pinnacle": "Pinnacle", "betfair": "Betfair", "sportsbet": "Sportsbet", "bet365": "Bet365", "pointsbetau": "Pointsbet", "betright": "Betright", "tab": "Tab", "dabble_au": "Dabble", "unibet": "Unibet", "ladbrokes": "Ladbrokes", "playup": "Playup", "tabtouch": "Tabtouch", "betr_au": "Betr", "neds": "Neds", "draftkings": "Draftkings", "fanduel": "Fanduel", "betmgm": "Betmgm", "betonlineag": "Betonline", "bovada": "Bovada", "boombet": "Boombet"
+    }
+    for k, v in row.items():
+        if k in key_map:
+            new_row[key_map[k]] = v
+        elif k in fieldnames:
+            new_row[k] = v
     try:
         with open(csv_path, "a", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             if not file_exists:
                 writer.writeheader()
-            writer.writerow(row)
+            writer.writerow(new_row)
     except Exception as e:
         print(f"[!] Error writing EV CSV: {e}")
+
+    # Ensure all columns are present in new_row
+    for col in fieldnames:
+        if col not in new_row:
+            new_row[col] = ""
 
 
 def log_all_odds(csv_path: Path, row: Dict):
@@ -43,35 +46,25 @@ def log_all_odds(csv_path: Path, row: Dict):
     
     file_exists = csv_path.exists()
     
-    # Same structure as hits_ev.csv for easy comparison
-    fieldnames = [
-        "Time",           # Event commence time (Perth local time)
-        "sport", "event", "market", "selection", "O/U",
-        "bookmaker",      # Which bookmaker has this opportunity
-        "Odds",           # Bookmaker odds
-        "Fair",           # Fair price
-        "EV%",            # Edge percentage
-        "Prob",           # Implied probability of fair price
-        "Stake",          # Kelly stake suggestion
-        "NumSharps",      # Number of sharp bookmakers used in fair calculation
-        # Sharp bookmakers (EU/Global)
-        "pinnacle", "betfair",
-        # US sharp bookmakers (for player props)
-        "draftkings", "fanduel", "betmgm", "betonlineag", "bovada",
-        # AU bookmakers (target books)
-        "sportsbet", "tab", "neds", "ladbrokes_au", "pointsbetau",
-        "boombet", "betright", "playup", "unibet", "tabtouch",
-        "dabble_au", "betr_au", "bet365_au"
-    ]
-    
-    # Remove timestamp from row if present (no longer needed)
-    row.pop("timestamp", None)
-    
+    preferred = CSV_HEADERS
+    key_map = {
+        "pinnacle": "Pinnacle", "betfair": "Betfair", "sportsbet": "Sportsbet", "bet365": "Bet365", "pointsbetau": "Pointsbet", "betright": "Betright", "tab": "Tab", "dabble_au": "Dabble", "unibet": "Unibet", "ladbrokes": "Ladbrokes", "playup": "Playup", "tabtouch": "Tabtouch", "betr_au": "Betr", "neds": "Neds", "draftkings": "Draftkings", "fanduel": "Fanduel", "betmgm": "Betmgm", "betonlineag": "Betonline", "bovada": "Bovada", "boombet": "Boombet"
+    }
+    new_row = {}
+    for k, v in row.items():
+        if k in key_map:
+            new_row[key_map[k]] = v
+        elif k in preferred:
+            new_row[k] = v
+    # Ensure all columns are present in new_row
+    for col in preferred:
+        if col not in new_row:
+            new_row[col] = ""
     try:
         with open(csv_path, "a", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer = csv.DictWriter(f, fieldnames=preferred)
             if not file_exists:
                 writer.writeheader()
-            writer.writerow(row)
+            writer.writerow(new_row)
     except Exception as e:
         print(f"[!] Error writing all odds CSV: {e}")

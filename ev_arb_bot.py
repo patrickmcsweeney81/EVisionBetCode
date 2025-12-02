@@ -1,3 +1,59 @@
+# --- CSV Formatting Helpers ---
+from datetime import datetime
+
+def format_local_time(utc_time_str):
+    """Convert UTC ISO time string to local time, format as 'hh:mm am/pm dd/mm/yyyy'"""
+    try:
+        utc_dt = datetime.fromisoformat(utc_time_str.replace('Z', '+00:00'))
+        # Use system local timezone
+        local_tz = datetime.now().astimezone().tzinfo
+        local_dt = utc_dt.astimezone(local_tz)
+        return local_dt.strftime('%I:%M %p %d/%m/%Y')
+    except Exception:
+        return utc_time_str
+
+def abbreviate_sport(sport_key):
+    mapping = {
+        'basketball_nba': 'NBA',
+        'basketball_ncaab': 'NCAAB',
+        'basketball_euroleague': 'Euro',
+        'americanfootball_nfl': 'NFL',
+        'americanfootball_ncaaf': 'NCAAF',
+        'baseball_mlb': 'MLB',
+        'icehockey_nhl': 'NHL',
+        'soccer_epl': 'EPL',
+        'soccer_uefa_champs_league': 'UCL',
+        'tennis_atp': 'ATP',
+        'tennis_wta': 'WTA',
+        # Add more as needed
+    }
+    return mapping.get(sport_key, sport_key.split('_')[-1].upper())
+
+def abbreviate_event(away, home):
+    def short_team(name):
+        # Use last word if multi-word, else as is
+        return name.split()[-1] if ' ' in name else name
+    return f"{short_team(away)} v {short_team(home)}"
+
+def abbreviate_market(market_key):
+    mapping = {
+        'player_points': 'Points',
+        'player_rebounds': 'Rebounds',
+        'player_assists': 'Assists',
+        'player_threes': '3PT Made',
+        'player_blocks': 'Blocks',
+        'player_steals': 'Steals',
+        'player_turnovers': 'Turnovers',
+        'player_points_rebounds_assists': 'Points, Rebounds, Assists',
+        'player_points_assists': 'Points, Assists',
+        'player_points_rebounds': 'Points, Rebounds',
+        'player_assists_rebounds': 'Assists, Rebounds',
+        'player_double_double': 'Double Double',
+        'player_first_basket': 'First Basket',
+        # Add more as needed
+    }
+    # Remove 'player_' prefix and underscores if not mapped
+    return mapping.get(market_key, market_key.replace('player_', '').replace('_', ' ').title())
 """
 EV Arbitrage Bot - MODULAR VERSION
 Uses clean handler modules from core/ directory.
@@ -74,9 +130,6 @@ BANKROLL = parse_float("BANKROLL", DEFAULT_BANKROLL)
 KELLY_FRACTION = parse_float("KELLY_FRACTION", DEFAULT_KELLY_FRACTION)
 BETFAIR_COMMISSION = parse_float("BETFAIR_COMMISSION", DEFAULT_BETFAIR_COMMISSION)
 MIN_TIME_TO_START_MINUTES = parse_float("MIN_TIME_TO_START_MINUTES", DEFAULT_MIN_TIME_TO_START)
-# Enforce minimum 5 minutes so we never log games starting imminently (<5min)
-if MIN_TIME_TO_START_MINUTES < 5:
-    MIN_TIME_TO_START_MINUTES = 5.0
 # Cap far-future event window to 48 hours max
 MAX_TIME_TO_START_HOURS = parse_float("MAX_TIME_TO_START_HOURS", DEFAULT_MAX_TIME_TO_START)
 if MAX_TIME_TO_START_HOURS <= 0 or MAX_TIME_TO_START_HOURS > 48:
@@ -307,19 +360,16 @@ def process_h2h_market(event: Dict, seen: Dict[str, bool]) -> int:
                 seen[hit_hash] = True
                 
                 ev_row = {
-                    "Time": commence_time,
-                    "sport": sport_key,
-                    "event": f"{away_team} @ {home_team}",
-                    "market": "h2h",
-                    "selection": home_team,
-                    "bookmaker": bookmakers_str,
-                    "Odds": f"{home_odds:.3f}",
-                    "Fair": f"{fair_home:.3f}",
-                    "EV": f"{edge*100:.2f}%",
-                    "prob": f"{fair_prob*100:.1f}%",
-                    "Stake": stake_str,
-                    "pinnacle": f"{pin_home:.3f}" if pin_home > 0 else "",
-                    "betfair": f"{bf_home:.3f}" if bf_home > 0 else "",
+                    "Start Time": format_local_time(commence_time),
+                    "Sport": abbreviate_sport(sport_key),
+                    "Event": abbreviate_event(away_team, home_team),
+                    "Market": "H2H",
+                    "Selection": home_team,
+                    "O/U + Y/N": "",
+                    "Book": bookmakers_str,
+                    "Price": f"{home_odds:.3f}",
+                    "Pinnacle": f"{pin_home:.3f}" if pin_home > 0 else "",
+                    "Betfair": f"{bf_home:.3f}" if bf_home > 0 else "",
                 }
                 
                 # Add bookmaker odds (AU + optional US)
@@ -898,19 +948,16 @@ def process_player_props_market(event: Dict, seen: Dict[str, bool], prop_markets
                 seen[hit_hash] = True
                 
                 ev_row = {
-                    "Time": commence_time,
-                    "sport": sport_key,
-                    "event": f"{away_team} @ {home_team}",
-                    "market": market_display,
-                    "selection": selection_display,
-                    "bookmaker": bookmakers_str,
-                    "Odds": f"{over_odds:.3f}",
-                    "Fair": f"{fair_over:.3f}",
-                    "EV": f"{edge*100:.2f}%",
-                    "prob": f"{fair_prob*100:.1f}%",
-                    "Stake": stake_str,
-                    "pinnacle": f"{pin_over:.3f}" if pin_over > 0 else "",
-                    "betfair": "",  # No Betfair for props
+                    "Start Time": format_local_time(commence_time),
+                    "Sport": abbreviate_sport(sport_key),
+                    "Event": abbreviate_event(away_team, home_team),
+                    "Market": abbreviate_market(market_key),
+                    "Selection": player_name,
+                    "O/U + Y/N": f"Over {line}" if "Over" in selection_display else f"Under {line}",
+                    "Book": bookmakers_str,
+                    "Price": f"{over_odds:.3f}",
+                    "Pinnacle": f"{pin_over:.3f}" if pin_over > 0 else "",
+                    "Betfair": "",
                 }
                 
                 # Add bookmaker odds
@@ -989,19 +1036,16 @@ def process_player_props_market(event: Dict, seen: Dict[str, bool], prop_markets
                 if not (has_over and has_under):
                     exotics_csv = DATA_DIR / "exotics_value.csv"
                     exotics_row = {
-                        "Time": commence_time,
-                        "sport": sport_key,
-                        "event": f"{away_team} @ {home_team}",
-                        "market": market_display,
-                        "selection": selection_display,
-                        "bookmaker": bookmakers_str,
-                        "Odds": f"{over_odds if has_over else under_odds:.3f}",
-                        "Fair": f"{fair_over if has_over else fair_under:.3f}",
-                        "EV": f"{edge*100:.2f}",
-                        "prob": f"{fair_prob*100:.1f}",
-                        "Stake": stake_str,
-                        "pinnacle": f"{pin_over if has_over else pin_under:.3f}" if (pin_over > 0 or pin_under > 0) else "",
-                        "betfair": "",
+                        "Start Time": format_local_time(commence_time),
+                        "Sport": abbreviate_sport(sport_key),
+                        "Event": abbreviate_event(away_team, home_team),
+                        "Market": abbreviate_market(market_key),
+                        "Selection": player_name,
+                        "O/U + Y/N": f"Over {line}" if has_over else f"Under {line}",
+                        "Book": bookmakers_str,
+                        "Price": f"{over_odds if has_over else under_odds:.3f}",
+                        "Pinnacle": f"{pin_over if has_over else pin_under:.3f}" if (pin_over > 0 or pin_under > 0) else "",
+                        "Betfair": "",
                     }
                     for bk_key in CSV_BOOKIES:
                         if bk_key in bookmakers_data:
@@ -1079,24 +1123,27 @@ def scan_sport(sport_key: str, seen: Dict[str, bool]) -> Dict[str, int]:
     skipped_too_far = 0
     
     for event in events:
-        if MIN_TIME_TO_START_MINUTES > 0 or MAX_TIME_TO_START_HOURS > 0:
-            commence_time = event.get("commence_time")
-            if commence_time:
-                try:
-                    commence_dt = datetime.fromisoformat(commence_time.replace('Z', '+00:00'))
-                    now_utc = datetime.now(timezone.utc)
-                    time_to_start = commence_dt - now_utc
-                    minutes_to_start = time_to_start.total_seconds() / 60
-                    
-                    if MIN_TIME_TO_START_MINUTES > 0 and minutes_to_start < MIN_TIME_TO_START_MINUTES:
-                        skipped_too_soon += 1
-                        continue
-                    
-                    if MAX_TIME_TO_START_HOURS > 0 and minutes_to_start > MAX_TIME_TO_START_HOURS * 60:
-                        skipped_too_far += 1
-                        continue
-                except Exception:
-                    pass
+        commence_time = event.get("commence_time")
+        if commence_time:
+            try:
+                commence_dt = datetime.fromisoformat(commence_time.replace('Z', '+00:00'))
+                now_utc = datetime.now(timezone.utc)
+                time_to_start = commence_dt - now_utc
+                minutes_to_start = time_to_start.total_seconds() / 60
+                # Always skip events starting in less than 1 minute
+                if minutes_to_start < 1.0:
+                    skipped_too_soon += 1
+                    continue
+                # Configurable filter for <3min (MIN_TIME_TO_START_MINUTES)
+                if MIN_TIME_TO_START_MINUTES > 0 and minutes_to_start < MIN_TIME_TO_START_MINUTES:
+                    skipped_too_soon += 1
+                    continue
+                # Configurable filter for >72hr (MAX_TIME_TO_START_HOURS)
+                if MAX_TIME_TO_START_HOURS > 0 and minutes_to_start > MAX_TIME_TO_START_HOURS * 60:
+                    skipped_too_far += 1
+                    continue
+            except Exception:
+                pass
         
         # Disk-backed cache & staleness checks
         eid = event.get("id")

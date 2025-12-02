@@ -1,3 +1,11 @@
+# Standardized CSV header order for all logging scripts
+CSV_HEADERS = [
+    "Start Time", "Sport", "Event", "Market", "Selection", "O/U + Y/N", "Book", "Price",
+    "Fair", "EV%", "Prob", "Stake", "NumSharps",
+    "Pinnacle", "Betfair", "Sportsbet", "Bet365", "Pointsbet", "Betright", "Tab", "Dabble", "Unibet",
+    "Ladbrokes", "Playup", "Tabtouch", "Betr", "Neds", "Draftkings", "Fanduel", "Betmgm", "Betonline",
+    "Bovada", "Boombet"
+]
 
 """
 Centralized configuration for bookmakers and API settings.
@@ -273,8 +281,8 @@ KELLY_FRACTION = 0.25        # Kelly fraction for stake sizing (25%)
 # ============================================================================
 # TIME FILTERS
 # ============================================================================
-MIN_TIME_TO_START_MINUTES = 3   # Skip events starting too soon (minutes)
-MAX_TIME_TO_START_HOURS = 24    # Skip events too far out (hours)
+MIN_TIME_TO_START_MINUTES = 0   # Skip events starting too soon (minutes)
+MAX_TIME_TO_START_HOURS = 999   # Skip events too far out (hours)
 
 # ============================================================================
 # DATA QUALITY

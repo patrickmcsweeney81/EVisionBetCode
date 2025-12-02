@@ -238,25 +238,28 @@ def write_filtered_csv(opportunities: List[Dict], output_path: Path):
         print(f"[!] No opportunities to write")
         return
     
-    # CSV structure matches all_odds_analysis.csv
+    # CSV structure matches all_odds_analysis.csv (amended names only)
     fieldnames = [
-        "Time", "sport", "event", "market", "selection",
-        "bookmaker", "Book", "Fair", "EV%", "Prob", "Stake", "NumSharps",
-        # Sharp bookmakers
-        "pinnacle", "betfair",
-        # US sharp bookmakers (for player props)
-        "draftkings", "fanduel", "betmgm", "betonlineag", "bovada",
-        # AU bookmakers (target books)
-        "sportsbet", "tab", "neds", "ladbrokes_au", "pointsbetau",
-        "boombet", "betright", "playup", "unibet", "tabtouch",
-        "dabble_au", "betr_au", "bet365_au"
+        "Start Time", "Sport", "Event", "Market", "Selection", "O/U + Y/N", "Book", "Price", "Fair", "EV%", "Prob", "Stake", "NumSharps",
+        "Pinnacle", "Betfair", "Sportsbet", "Bet365", "Pointsbet", "Betright", "Tab", "Dabble", "Unibet", "Ladbrokes", "Playup", "Tabtouch", "Betr", "Neds", "Draftkings", "Fanduel", "Betmgm", "Betonline", "Bovada", "Boombet"
     ]
-    
+    key_map = {
+        "pinnacle": "Pinnacle", "betfair": "Betfair", "sportsbet": "Sportsbet", "bet365": "Bet365", "pointsbetau": "Pointsbet", "betright": "Betright", "tab": "Tab", "dabble_au": "Dabble", "unibet": "Unibet", "ladbrokes": "Ladbrokes", "playup": "Playup", "tabtouch": "Tabtouch", "betr_au": "Betr", "neds": "Neds", "draftkings": "Draftkings", "fanduel": "Fanduel", "betmgm": "Betmgm", "betonlineag": "Betonline", "bovada": "Bovada", "boombet": "Boombet"
+    }
+    # Remap all opportunities to use only amended keys
+    remapped = []
+    for row in opportunities:
+        new_row = {}
+        for k, v in row.items():
+            if k in key_map:
+                new_row[key_map[k]] = v
+            elif k in fieldnames:
+                new_row[k] = v
+        remapped.append(new_row)
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(opportunities)
-    
+        writer.writerows(remapped)
     print(f"[OK] Wrote {len(opportunities)} opportunities to {output_path}")
 
 
@@ -333,8 +336,8 @@ def main():
     
     # Summary stats
     if filtered:
-        ev_values = [float(o.get('EV%', '0%').strip('%')) for o in filtered]
-        prob_values = [float(o.get('Prob', '0%').strip('%')) for o in filtered]
+        ev_values = [float(o.get('EV%', '0%').strip('%') if o.get('EV%') else o.get('EV', '0').strip('%')) for o in filtered]
+        prob_values = [float(o.get('Prob', '0%').strip('%') if o.get('Prob') else o.get('Probability', '0').strip('%')) for o in filtered]
         print(f"\n[STATS]")
         print(f"  EV Range: {min(ev_values):.2f}% to {max(ev_values):.2f}%")
         print(f"  Prob Range: {min(prob_values):.2f}% to {max(prob_values):.2f}%")
@@ -342,7 +345,7 @@ def main():
         # Count by sport
         sports = defaultdict(int)
         for o in filtered:
-            sports[o.get('sport', 'unknown')] += 1
+            sports[o.get('Sport', o.get('sport', 'unknown'))] += 1
         print(f"  By Sport:")
         for sport, count in sorted(sports.items()):
             print(f"    {sport}: {count}")

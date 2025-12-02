@@ -314,25 +314,26 @@ def log_raw_event_odds(
                                 else:
                                     continue
                                 all_odds_row = {
-                                    "Time": commence_time,
-                                    "sport": sport_key,
-                                    "event": f"{away_team} @ {home_team}",
-                                    "market": market_display,
-                                    "selection": selection,
-                                    "bookmaker": bkey_fallback,
-                                    "Odds": f"{outcome_odds:.3f}",
+                                    "Start Time": commence_time,
+                                    "Sport": sport_key,
+                                    "Event": f"{away_team} @ {home_team}",
+                                    "Market": market_display,
+                                    "Selection": selection,
+                                    "O/U + Y/N": "",  # Fill if available
+                                    "Book": bkey_fallback,
+                                    "Price": f"{outcome_odds:.3f}",
                                     "Fair": fair_str,
                                     "EV%": edge_str,
                                     "Prob": prob_str,
                                     "Stake": stake_str,
                                     "NumSharps": num_sharps_str,
-                                    "pinnacle": "",
-                                    "betfair": "",
-                                    "draftkings": "",
-                                    "fanduel": "",
-                                    "betmgm": "",
-                                    "betonlineag": "",
-                                    "bovada": "",
+                                    "Pinnacle": "",
+                                    "Betfair": "",
+                                    "Draftkings": "",
+                                    "Fanduel": "",
+                                    "Betmgm": "",
+                                    "Betonline": "",
+                                    "Bovada": "",
                                 }
                                 for bk_col in au_books_in_csv:
                                     if bk_col in ["betfair_ex_au", "betfair_ex_eu"]:
@@ -528,26 +529,26 @@ def log_raw_event_odds(
                 
                 # Build row for this specific bookmaker × selection
                 all_odds_row = {
-                    "Time": commence_time,
-                    "sport": sport_key,
-                    "event": f"{away_team} @ {home_team}",
-                    "market": market_display,
-                    "selection": selection,
-                    "bookmaker": bkey,
-                    "Odds": f"{outcome_odds:.3f}",
+                    "Start Time": commence_time,
+                    "Sport": sport_key,
+                    "Event": f"{away_team} @ {home_team}",
+                    "Market": market_display,
+                    "Selection": selection,
+                    "O/U + Y/N": "",  # Fill if available
+                    "Book": bkey,
+                    "Price": f"{outcome_odds:.3f}",
                     "Fair": fair_str,
                     "EV%": edge_str,
                     "Prob": prob_str,
                     "Stake": stake_str,
                     "NumSharps": num_sharps_str,
-                    "pinnacle": "",  # Will be filled from all_bookie_odds
-                    "betfair": "",   # Will be filled from all_bookie_odds
-                    # Initialize US sharp bookmaker columns
-                    "draftkings": "",
-                    "fanduel": "",
-                    "betmgm": "",
-                    "betonlineag": "",
-                    "bovada": "",
+                    "Pinnacle": "",  # Will be filled from all_bookie_odds
+                    "Betfair": "",   # Will be filled from all_bookie_odds
+                    "Draftkings": "",
+                    "Fanduel": "",
+                    "Betmgm": "",
+                    "Betonline": "",
+                    "Bovada": "",
                 }
                 
 

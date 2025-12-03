@@ -360,14 +360,14 @@ def process_h2h_market(event: Dict, seen: Dict[str, bool]) -> int:
                 seen[hit_hash] = True
                 
                 ev_row = {
-                    "Start Time": format_local_time(commence_time),
-                    "Sport": abbreviate_sport(sport_key),
-                    "Event": abbreviate_event(away_team, home_team),
-                    "Market": "H2H",
-                    "Selection": home_team,
-                    "O/U + Y/N": "",
-                    "Book": bookmakers_str,
-                    "Price": f"{home_odds:.3f}",
+                    "start_time": format_local_time(commence_time),
+                    "sport": abbreviate_sport(sport_key),
+                    "event": abbreviate_event(away_team, home_team),
+                    "market": "H2H",
+                    "selection": home_team,
+                    "line": "",
+                    "book": bookmakers_str,
+                    "price": f"{home_odds:.3f}",
                     "Pinnacle": f"{pin_home:.3f}" if pin_home > 0 else "",
                     "Betfair": f"{bf_home:.3f}" if bf_home > 0 else "",
                 }
@@ -948,14 +948,14 @@ def process_player_props_market(event: Dict, seen: Dict[str, bool], prop_markets
                 seen[hit_hash] = True
                 
                 ev_row = {
-                    "Start Time": format_local_time(commence_time),
-                    "Sport": abbreviate_sport(sport_key),
-                    "Event": abbreviate_event(away_team, home_team),
-                    "Market": abbreviate_market(market_key),
-                    "Selection": player_name,
-                    "O/U + Y/N": f"Over {line}" if "Over" in selection_display else f"Under {line}",
-                    "Book": bookmakers_str,
-                    "Price": f"{over_odds:.3f}",
+                    "start_time": format_local_time(commence_time),
+                    "sport": abbreviate_sport(sport_key),
+                    "event": abbreviate_event(away_team, home_team),
+                    "market": abbreviate_market(market_key),
+                    "selection": player_name,
+                    "line": f"Over {line}" if "Over" in selection_display else f"Under {line}",
+                    "book": bookmakers_str,
+                    "price": f"{over_odds:.3f}",
                     "Pinnacle": f"{pin_over:.3f}" if pin_over > 0 else "",
                     "Betfair": "",
                 }
@@ -1036,14 +1036,14 @@ def process_player_props_market(event: Dict, seen: Dict[str, bool], prop_markets
                 if not (has_over and has_under):
                     exotics_csv = DATA_DIR / "exotics_value.csv"
                     exotics_row = {
-                        "Start Time": format_local_time(commence_time),
-                        "Sport": abbreviate_sport(sport_key),
-                        "Event": abbreviate_event(away_team, home_team),
-                        "Market": abbreviate_market(market_key),
-                        "Selection": player_name,
-                        "O/U + Y/N": f"Over {line}" if has_over else f"Under {line}",
-                        "Book": bookmakers_str,
-                        "Price": f"{over_odds if has_over else under_odds:.3f}",
+                        "start_time": format_local_time(commence_time),
+                        "sport": abbreviate_sport(sport_key),
+                        "event": abbreviate_event(away_team, home_team),
+                        "market": abbreviate_market(market_key),
+                        "selection": player_name,
+                        "line": f"Over {line}" if has_over else f"Under {line}",
+                        "book": bookmakers_str,
+                        "price": f"{over_odds if has_over else under_odds:.3f}",
                         "Pinnacle": f"{pin_over if has_over else pin_under:.3f}" if (pin_over > 0 or pin_under > 0) else "",
                         "Betfair": "",
                     }

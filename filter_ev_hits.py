@@ -104,11 +104,11 @@ def calculate_fair_and_ev(opportunities: List[Dict], betfair_commission: float =
             else:
                 stake_str = "$0"
             
-            # Populate calculated fields
-            opp['Fair'] = f"{fair_odds:.3f}"
-            opp['EV%'] = f"{edge * 100:.2f}%"
-            opp['Prob'] = f"{implied_prob * 100:.2f}%"
-            opp['Stake'] = stake_str
+            # Populate calculated fields (lowercase)
+            opp['fair'] = f"{fair_odds:.3f}"
+            opp['ev'] = f"{edge * 100:.2f}%"
+            opp['prob'] = f"{implied_prob * 100:.2f}%"
+            opp['stake'] = stake_str
             
             enriched.append(opp)
             
@@ -136,17 +136,17 @@ def apply_filters(opportunities: List[Dict], ev_min: float, prob_min: float, min
     
     for opp in opportunities:
         try:
-            # Parse EV% (remove % sign)
-            ev_str = opp.get('EV%', '0%').strip('%')
-            ev = float(ev_str) / 100.0
+            # Parse ev (stored as decimal, may have % sign for legacy compatibility)
+            ev_str = str(opp.get('ev', opp.get('EV%', '0'))).strip('%')
+            ev = float(ev_str) if not ev_str.endswith('%') else float(ev_str) / 100.0
             
-            # Parse Prob (remove % sign)
-            prob_str = opp.get('Prob', '0%').strip('%')
-            prob = float(prob_str) / 100.0
+            # Parse prob (stored as decimal, may have % sign for legacy compatibility)
+            prob_str = str(opp.get('prob', opp.get('Prob', '0'))).strip('%')
+            prob = float(prob_str) if not prob_str.endswith('%') else float(prob_str) / 100.0
             
-            # Parse NumSharps
-            num_sharps_str = opp.get('NumSharps', '0')
-            num_sharps = int(num_sharps_str) if num_sharps_str and num_sharps_str.strip() else 0
+            # Parse num_sharps
+            num_sharps_str = opp.get('num_sharps', opp.get('NumSharps', '0'))
+            num_sharps = int(num_sharps_str) if num_sharps_str and str(num_sharps_str).strip() else 0
             
             # Apply thresholds
             if ev >= ev_min and prob >= prob_min and num_sharps >= min_sharps:
@@ -179,14 +179,14 @@ def select_max_edge_per_event(opportunities: List[Dict]) -> List[Dict]:
         
         # Find max edge in this group
         try:
-            max_edge = max(float(o.get('EV%', '0%').strip('%')) for o in opps_group)
+            max_edge = max(float(str(o.get('ev', o.get('EV%', '0'))).strip('%')) for o in opps_group)
         except (ValueError, AttributeError):
             continue
         
         # Keep all bookmakers that have this max edge
         for opp in opps_group:
             try:
-                opp_edge = float(opp.get('EV%', '0%').strip('%'))
+                opp_edge = float(str(opp.get('ev', opp.get('EV%', '0'))).strip('%'))
                 if abs(opp_edge - max_edge) < 0.01:  # Allow for rounding
                     max_edge_opportunities.append(opp)
             except (ValueError, AttributeError):
@@ -209,8 +209,8 @@ def combine_same_edge_bookmakers(opportunities: List[Dict]) -> List[Dict]:
             opp.get('event'),
             opp.get('market'),
             opp.get('selection'),
-            opp.get('EV%'),  # Include edge in key
-            opp.get('Book'),  # Include book odds in key
+            opp.get('ev', opp.get('EV%')),  # Include edge in key
+            opp.get('book', opp.get('Book')),  # Include book odds in key
         )
         groups[key].append(opp)
     
@@ -224,8 +224,8 @@ def combine_same_edge_bookmakers(opportunities: List[Dict]) -> List[Dict]:
         combined_opp = opps_group[0].copy()
         
         # Combine bookmaker names
-        bookmakers = [o.get('bookmaker', '') for o in opps_group]
-        combined_opp['bookmaker'] = ', '.join(bookmakers)
+        bookmakers = [o.get('book', o.get('bookmaker', '')) for o in opps_group]
+        combined_opp['book'] = ', '.join(bookmakers)
         
         combined.append(combined_opp)
     
@@ -238,9 +238,9 @@ def write_filtered_csv(opportunities: List[Dict], output_path: Path):
         print(f"[!] No opportunities to write")
         return
     
-    # CSV structure matches all_odds_analysis.csv (amended names only)
+    # CSV structure matches all_odds_analysis.csv (lowercase web-compatible)
     fieldnames = [
-        "Start Time", "Sport", "Event", "Market", "Selection", "O/U + Y/N", "Book", "Price", "Fair", "EV%", "Prob", "Stake", "NumSharps",
+        "start_time", "sport", "event", "market", "selection", "line", "book", "price", "fair", "ev", "prob", "stake", "num_sharps",
         "Pinnacle", "Betfair", "Sportsbet", "Bet365", "Pointsbet", "Betright", "Tab", "Dabble", "Unibet", "Ladbrokes", "Playup", "Tabtouch", "Betr", "Neds", "Draftkings", "Fanduel", "Betmgm", "Betonline", "Bovada", "Boombet"
     ]
     key_map = {

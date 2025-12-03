@@ -18,27 +18,64 @@ def log_all_odds(csv_path: Path, row: Dict):
     file_exists = csv_path.exists()
     
     preferred = CSV_HEADERS
+    
     # Map old/original keys to new column names
-    key_map = {
-        "pinnacle": "Pinnacle", "betfair": "Betfair", "sportsbet": "Sportsbet", "bet365": "Bet365", "pointsbetau": "Pointsbet", "betright": "Betright", "tab": "Tab", "dabble_au": "Dabble", "unibet": "Unibet", "ladbrokes": "Ladbrokes", "playup": "Playup", "tabtouch": "Tabtouch", "betr_au": "Betr", "neds": "Neds", "draftkings": "Draftkings", "fanduel": "Fanduel", "betmgm": "Betmgm", "betonlineag": "Betonline", "bovada": "Bovada", "boombet": "Boombet"
+    column_map = {
+        # Main data columns (old format → new lowercase format)
+        "Start Time": "start_time",
+        "Sport": "sport",
+        "Event": "event",
+        "Market": "market",
+        "Selection": "selection",
+        "O/U + Y/N": "line",
+        "Book": "book",
+        "Price": "price",
+        "Fair": "fair",
+        "EV%": "ev",
+        "Prob": "prob",
+        "Stake": "stake",
+        "NumSharps": "num_sharps",
+        # Bookmaker columns (lowercase keys → Title case)
+        "pinnacle": "Pinnacle", 
+        "betfair": "Betfair", 
+        "sportsbet": "Sportsbet", 
+        "bet365": "Bet365", 
+        "pointsbetau": "Pointsbet", 
+        "betright": "Betright", 
+        "tab": "Tab", 
+        "dabble_au": "Dabble", 
+        "unibet": "Unibet", 
+        "ladbrokes": "Ladbrokes", 
+        "playup": "Playup", 
+        "tabtouch": "Tabtouch", 
+        "betr_au": "Betr", 
+        "neds": "Neds", 
+        "draftkings": "Draftkings", 
+        "fanduel": "Fanduel", 
+        "betmgm": "Betmgm", 
+        "betonlineag": "Betonline", 
+        "bovada": "Bovada", 
+        "boombet": "Boombet"
     }
+    
     new_row = {}
     for k, v in row.items():
-        if k in key_map:
-            new_row[key_map[k]] = v
+        # Map old keys to new format
+        if k in column_map:
+            new_row[column_map[k]] = v
         elif k in preferred:
             new_row[k] = v
         # else: skip old keys not in preferred
 
-    # Keep Price column aligned with the bookmaker specified in Book
+    # Keep price column aligned with the bookmaker specified in book column
     book_value = row.get("Book") or row.get("book")
     if book_value:
         book_key_lower = book_value.lower()
         possible_columns = []
-        if book_key_lower in key_map:
-            possible_columns.append(key_map[book_key_lower])
-        if book_value in key_map:
-            mapped = key_map[book_value]
+        if book_key_lower in column_map:
+            possible_columns.append(column_map[book_key_lower])
+        if book_value in column_map:
+            mapped = column_map[book_value]
             if mapped not in possible_columns:
                 possible_columns.append(mapped)
         if book_value in preferred and book_value not in possible_columns:
@@ -57,7 +94,7 @@ def log_all_odds(csv_path: Path, row: Dict):
                     price_from_book = col_value
                     break
         if price_from_book:
-            new_row["Price"] = price_from_book
+            new_row["price"] = price_from_book
     # Add timestamp if needed (optional, not in preferred)
     # if "timestamp" not in new_row:
     #     new_row["timestamp"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")

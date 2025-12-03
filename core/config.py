@@ -1,7 +1,7 @@
-# Standardized CSV header order for all logging scripts
+# Standardized CSV header order for all logging scripts (web-compatible lowercase)
 CSV_HEADERS = [
-    "Start Time", "Sport", "Event", "Market", "Selection", "O/U + Y/N", "Book", "Price",
-    "Fair", "EV%", "Prob", "Stake", "NumSharps",
+    "start_time", "sport", "event", "market", "selection", "line", "book", "price",
+    "fair", "ev", "prob", "stake", "num_sharps",
     "Pinnacle", "Betfair", "Sportsbet", "Bet365", "Pointsbet", "Betright", "Tab", "Dabble", "Unibet",
     "Ladbrokes", "Playup", "Tabtouch", "Betr", "Neds", "Draftkings", "Fanduel", "Betmgm", "Betonline",
     "Bovada", "Boombet"

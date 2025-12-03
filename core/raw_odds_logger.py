@@ -314,19 +314,19 @@ def log_raw_event_odds(
                                 else:
                                     continue
                                 all_odds_row = {
-                                    "Start Time": commence_time,
-                                    "Sport": sport_key,
-                                    "Event": f"{away_team} @ {home_team}",
-                                    "Market": market_display,
-                                    "Selection": selection,
-                                    "O/U + Y/N": "",  # Fill if available
-                                    "Book": bkey_fallback,
-                                    "Price": f"{outcome_odds:.3f}",
-                                    "Fair": fair_str,
-                                    "EV%": edge_str,
-                                    "Prob": prob_str,
-                                    "Stake": stake_str,
-                                    "NumSharps": num_sharps_str,
+                                    "start_time": commence_time,
+                                    "sport": sport_key,
+                                    "event": f"{away_team} @ {home_team}",
+                                    "market": market_display,
+                                    "selection": selection,
+                                    "line": "",  # Fill if available
+                                    "book": bkey_fallback,
+                                    "price": f"{outcome_odds:.3f}",
+                                    "fair": fair_str,
+                                    "ev": edge_str,
+                                    "prob": prob_str,
+                                    "stake": stake_str,
+                                    "num_sharps": num_sharps_str,
                                     "Pinnacle": "",
                                     "Betfair": "",
                                     "Draftkings": "",
@@ -529,19 +529,19 @@ def log_raw_event_odds(
                 
                 # Build row for this specific bookmaker × selection
                 all_odds_row = {
-                    "Start Time": commence_time,
-                    "Sport": sport_key,
-                    "Event": f"{away_team} @ {home_team}",
-                    "Market": market_display,
-                    "Selection": selection,
-                    "O/U + Y/N": "",  # Fill if available
-                    "Book": bkey,
-                    "Price": f"{outcome_odds:.3f}",
-                    "Fair": fair_str,
-                    "EV%": edge_str,
-                    "Prob": prob_str,
-                    "Stake": stake_str,
-                    "NumSharps": num_sharps_str,
+                    "start_time": commence_time,
+                    "sport": sport_key,
+                    "event": f"{away_team} @ {home_team}",
+                    "market": market_display,
+                    "selection": selection,
+                    "line": "",  # Fill if available
+                    "book": bkey,
+                    "price": f"{outcome_odds:.3f}",
+                    "fair": fair_str,
+                    "ev": edge_str,
+                    "prob": prob_str,
+                    "stake": stake_str,
+                    "num_sharps": num_sharps_str,
                     "Pinnacle": "",  # Will be filled from all_bookie_odds
                     "Betfair": "",   # Will be filled from all_bookie_odds
                     "Draftkings": "",

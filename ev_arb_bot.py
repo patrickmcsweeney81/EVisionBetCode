@@ -81,7 +81,7 @@ from core.totals_handler import process_totals_event
 from core.player_props_handler_NEW import process_player_props_event
 from core.nfl_props_handler import process_nfl_props_event
 from core.utils import kelly_stake
-from core.logging import log_all_odds
+from core.logging import log_all_odds, finalize_all_odds_csv
 from core.config import (
     AU_BOOKIES, SHARP_BOOKIES, US_BOOKIES, ALL_BOOKIES_ORDERED,
     EV_MIN_EDGE as DEFAULT_EV_MIN_EDGE,
@@ -130,10 +130,10 @@ BANKROLL = parse_float("BANKROLL", DEFAULT_BANKROLL)
 KELLY_FRACTION = parse_float("KELLY_FRACTION", DEFAULT_KELLY_FRACTION)
 BETFAIR_COMMISSION = parse_float("BETFAIR_COMMISSION", DEFAULT_BETFAIR_COMMISSION)
 MIN_TIME_TO_START_MINUTES = parse_float("MIN_TIME_TO_START_MINUTES", DEFAULT_MIN_TIME_TO_START)
-# Cap far-future event window to 48 hours max
+# Allow configurable max time (removed 48hr cap for testing)
 MAX_TIME_TO_START_HOURS = parse_float("MAX_TIME_TO_START_HOURS", DEFAULT_MAX_TIME_TO_START)
-if MAX_TIME_TO_START_HOURS <= 0 or MAX_TIME_TO_START_HOURS > 48:
-    MAX_TIME_TO_START_HOURS = 48.0
+if MAX_TIME_TO_START_HOURS <= 0:
+    MAX_TIME_TO_START_HOURS = 999.0  # Default to no upper limit if not set
 STALE_EVENT_HOURS = parse_float("STALE_EVENT_HOURS", 24.0)  # Skip events older than this window
 REFRESH_EVENT_MINUTES = parse_float("REFRESH_EVENT_MINUTES", 30.0)  # Do not re-log events within this recency window
 
@@ -1288,6 +1288,9 @@ def main() -> int:
     save_dedupe(seen)
     save_api_usage()
     save_event_cache()
+    
+    # Finalize CSV (atomic rename from .tmp to .csv)
+    finalize_all_odds_csv()
     
     print(f"\n{'='*80}")
     print(f"COMPLETE: All odds logged to {ALL_ODDS_CSV}")

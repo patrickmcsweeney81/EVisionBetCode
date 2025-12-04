@@ -5,17 +5,32 @@ This allows post-processing with different thresholds without re-fetching API da
 from pathlib import Path
 from typing import Dict
 from datetime import datetime
-
+import os
 import csv
 from core.config import CSV_HEADERS
+
+# Track which file we're writing to (temp during writes, then swap)
+_current_temp_file = None
+_final_csv_path = None
 
 
 def log_all_odds(csv_path: Path, row: Dict):
     """
     Log every single opportunity to all_odds_analysis.csv
     No filtering - just raw data for later analysis
+    
+    Uses atomic write pattern: writes to .tmp file, then renames.
+    This prevents "file in use" errors when Excel has the CSV open.
     """
-    file_exists = csv_path.exists()
+    global _current_temp_file, _final_csv_path
+    
+    # Initialize temp file on first call
+    if _final_csv_path is None:
+        _final_csv_path = csv_path
+        _current_temp_file = csv_path.parent / f"{csv_path.stem}.tmp"
+    
+    # Check if temp file exists (determines if we write header)
+    file_exists = _current_temp_file.exists()
     
     preferred = CSV_HEADERS
     
@@ -99,7 +114,8 @@ def log_all_odds(csv_path: Path, row: Dict):
     # if "timestamp" not in new_row:
     #     new_row["timestamp"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     fieldnames = preferred
-    with open(csv_path, 'a', newline='', encoding='utf-8') as f:
+    # Write to temp file instead of final file
+    with open(_current_temp_file, 'a', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
         if not file_exists:
             writer.writeheader()
@@ -109,3 +125,38 @@ def log_all_odds(csv_path: Path, row: Dict):
     for col in preferred:
         if col not in new_row:
             new_row[col] = ""
+
+
+def finalize_all_odds_csv():
+    """
+    Call this when all odds are logged to atomically replace the final CSV.
+    This allows Excel to keep the file open without blocking writes.
+    """
+    global _current_temp_file, _final_csv_path
+    
+    if _current_temp_file is None or not _current_temp_file.exists():
+        return  # Nothing to finalize
+    
+    try:
+        # Remove old file if exists (Windows allows this even if open in Excel read-only)
+        if _final_csv_path.exists():
+            try:
+                _final_csv_path.unlink()
+            except PermissionError:
+                # File is locked, try alternate approach
+                backup = _final_csv_path.parent / f"{_final_csv_path.stem}.old"
+                if backup.exists():
+                    backup.unlink()
+                _final_csv_path.rename(backup)
+        
+        # Rename temp to final
+        _current_temp_file.rename(_final_csv_path)
+        print(f"[CSV] Successfully wrote {_final_csv_path}")
+        
+    except Exception as e:
+        print(f"[!] Error finalizing CSV: {e}")
+        print(f"[!] Data saved in: {_current_temp_file}")
+    
+    # Reset for next run
+    _current_temp_file = None
+    _final_csv_path = None

@@ -144,9 +144,10 @@ ALL_BOOKIES_ORDERED = [
 # FAIR PRICE WEIGHTS
 # DEPRECATED: Use book_weights.py 0-4 scale system instead.
 # These percentage weights are kept for legacy code compatibility only.
+# NOTE: New handlers use book_weights.py where Betfair = weight 3 (strong)
 # ============================================================================
-WEIGHT_PINNACLE = 0.75       # Pinnacle gets 75% weight
-WEIGHT_BETFAIR = 0.0         # Betfair excluded from fair calculation
+WEIGHT_PINNACLE = 0.75       # Pinnacle gets 75% weight  
+WEIGHT_BETFAIR = 0.25        # Betfair gets 25% weight (changed from 0.0)
 WEIGHT_OTHER_SHARPS = 0.25   # Other sharp books get 25% weight (median)
 
 # ============================================================================

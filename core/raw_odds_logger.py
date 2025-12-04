@@ -438,6 +438,8 @@ def log_raw_event_odds(
                 is_player_prop = market_key.startswith("player_")
                 us_sharp_books = ["draftkings", "fanduel", "betmgm"]
                 
+                # Remove the skip_extreme_line logic - we'll handle extreme EVs in post-processing instead
+                
                 for bm in bookmakers:
                     bm_key = bm.get("key", "")
                     if bm_key not in sharp_keys:
@@ -455,6 +457,10 @@ def log_raw_event_odds(
                                     continue
                                 if point is not None and bm_point != point:
                                     continue
+                                
+                                # DEBUG: Log when sharp books match the line
+                                if market_key.startswith("player_points_rebounds_assists") and point and point > 35:
+                                    print(f"[SHARP_MATCH] {bm_key} has {outcome_name} {bm_point} at {bm_outcome_odds}")
                                 
                                 if bm_key == "pinnacle":
                                     pinnacle_odds_for_outcome = bm_outcome_odds

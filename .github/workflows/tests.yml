@@ -1,0 +1,111 @@
+name: Python Tests & Quality Checks
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  test:
+    name: Test on Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[dev]"
+      
+      - name: Lint with flake8
+        continue-on-error: true
+        run: |
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Exit-code is non-zero if there are style issues
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
+      
+      - name: Type check with mypy
+        continue-on-error: true
+        run: mypy . --ignore-missing-imports
+      
+      - name: Run pytest with coverage
+        run: |
+          pytest --cov=core --cov-report=xml --cov-report=term-missing
+      
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+
+  code-quality:
+    name: Code Quality & Security
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      
+      - name: Check imports with isort
+        run: isort --check-only --profile black --line-length=100 .
+      
+      - name: Check formatting with black
+        run: black --check --line-length=100 .
+      
+      - name: Lint with pylint
+        continue-on-error: true
+        run: pylint --rcfile=.pylintrc core/ ev_arb_bot.py
+      
+      - name: Check for security issues with bandit
+        continue-on-error: true
+        run: |
+          pip install bandit
+          bandit -r core/ ev_arb_bot.py -f json -o bandit-report.json || true
+
+  docs:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pydoc-markdown
+      
+      - name: Check README exists
+        run: test -f README.txt || (echo "README.txt not found" && exit 1)

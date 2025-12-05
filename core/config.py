@@ -2,9 +2,12 @@
 CSV_HEADERS = [
     "start_time", "sport", "event", "market", "selection", "line", "book", "price",
     "fair", "ev", "prob", "stake", "num_sharps",
-    "Pinnacle", "Betfair", "Sportsbet", "Bet365", "Pointsbet", "Betright", "Tab", "Dabble", "Unibet",
-    "Ladbrokes", "Playup", "Tabtouch", "Betr", "Neds", "Draftkings", "Fanduel", "Betmgm", "Betonline",
-    "Bovada", "Boombet"
+    # Sharp books (fair price calculation)
+    "Pinnacle", "Betfair_EU", "Betfair_AU", "Draftkings", "Fanduel", "Betmgm", "Betonline", "Bovada", "Betus", "Lowvig", "Mybookie", "Marathonbet", "Matchbook",
+    # AU target books
+    "Sportsbet", "Bet365", "Pointsbet", "Betright", "Tab", "Dabble", "Unibet", "Ladbrokes", "Playup", "Tabtouch", "Betr", "Neds", "Boombet",
+    # US mass-market books
+    "Caesars", "Betrivers", "Sugarhouse", "Superbook", "Twinspires", "Wynnbet", "Williamhill"
 ]
 
 """
@@ -295,5 +298,5 @@ OUTLIER_DETECTION_ENABLED = True  # Enable outlier removal from median calculati
 # ============================================================================
 DATA_DIR_NAME = "data"
 DEDUP_FILE_NAME = "seen_hits.json"
-# Deprecated: EV_CSV_NAME removed (policy: only all_odds_analysis.csv + all_odds.csv retained)
-ALL_ODDS_CSV_NAME = "all_odds_analysis.csv"
+# Deprecated: EV_CSV_NAME removed (policy: only raw_odds.csv + all_odds.csv retained)
+ALL_ODDS_CSV_NAME = "raw_odds.csv"

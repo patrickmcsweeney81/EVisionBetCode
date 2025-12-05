@@ -141,7 +141,7 @@ REFRESH_EVENT_MINUTES = parse_float("REFRESH_EVENT_MINUTES", 30.0)  # Do not re-
 DATA_DIR = Path(__file__).parent / DATA_DIR_NAME
 DATA_DIR.mkdir(exist_ok=True)
 DEDUP_FILE = DATA_DIR / DEDUP_FILE_NAME
-# EV_CSV removed - use filter_ev_hits.py to generate hits from all_odds_analysis.csv
+# EV_CSV removed - use filter_ev_hits.py to generate hits from raw_odds.csv
 ALL_ODDS_CSV = DATA_DIR / ALL_ODDS_CSV_NAME
 
 # Allowed CSV outputs (enforced cleanup): only comprehensive analysis and filtered EV summary
@@ -173,7 +173,7 @@ API_USAGE = {
 def cleanup_data_directory():
     """Purge previous run CSVs.
     - Remove any non-allowed CSV artifacts.
-    - Also delete the allowed CSVs (all_odds_analysis.csv, all_odds.csv) so each run starts fresh.
+    - Also delete the allowed CSVs (raw_odds.csv, all_odds.csv) so each run starts fresh.
     This prevents stale / past games persisting across runs.
     """
     try:
@@ -1170,7 +1170,7 @@ def scan_sport(sport_key: str, seen: Dict[str, bool]) -> Dict[str, int]:
         print(f"[filter] Skipped {skipped_too_soon} starting <{MIN_TIME_TO_START_MINUTES}min, {skipped_too_far} starting >{MAX_TIME_TO_START_HOURS}hrs")
     print(f"[filter] Processing {len(filtered_events)} events after time filter")
     
-    # Log ALL filtered raw odds to all_odds_analysis.csv (with fair prices calculated)
+    # Log ALL filtered raw odds to raw_odds.csv (with fair prices calculated)
     from core.raw_odds_logger import log_raw_event_odds
     # Cache by event.id + main_markets to avoid duplicate processing within a run
     cache_key_sport = f"{sport_key}|{','.join(main_markets)}"
@@ -1230,10 +1230,10 @@ def scan_sport(sport_key: str, seen: Dict[str, bool]) -> Dict[str, int]:
                 event_with_props = event.copy()
                 event_with_props["bookmakers"] = prop_event.get("bookmakers", [])
                 
-                # Log player props to all_odds_analysis.csv
+                # Log player props to raw_odds.csv
                 from core.raw_odds_logger import log_raw_event_odds
                 log_raw_event_odds(event_with_props, ALL_ODDS_CSV, list(ACTIVE_BOOKIES), BANKROLL, KELLY_FRACTION, BETFAIR_COMMISSION)
-                # (Removed all other CSV exports except all_odds_analysis.csv and all_odds.csv)
+                # (Removed all other CSV exports except raw_odds.csv and all_odds.csv)
                 
                 # Use sport-specific handler for NFL
                 if sport_key == "americanfootball_nfl":

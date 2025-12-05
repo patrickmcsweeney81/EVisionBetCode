@@ -1,5 +1,5 @@
 """
-Raw odds extractor - logs ALL bookmaker odds to all_odds_analysis.csv
+Raw odds extractor - logs ALL bookmaker odds to raw_odds.csv
 This captures every opportunity WITH fair prices, EV%, and Prob calculated.
 """
 from pathlib import Path
@@ -113,7 +113,7 @@ def log_raw_event_odds(
     betfair_commission: float = 0.06
 ):
     """
-    Extract and log ALL odds from a raw event to all_odds_analysis.csv
+    Extract and log ALL odds from a raw event to raw_odds.csv
     """
     sport_key = event.get("sport_key", "")
     event_id = event.get("id", "")
@@ -131,7 +131,7 @@ def log_raw_event_odds(
     print(f"[DEBUG] Totals market coverage for event {event_id}: {totals_coverage}")
     any_row_logged = False
     """
-    Extract and log ALL odds from a raw event to all_odds_analysis.csv
+    Extract and log ALL odds from a raw event to raw_odds.csv
     
     This logs EVERY bookmaker × market × selection combination WITH:
     - Fair prices calculated from sharp bookmakers (Pinnacle, Betfair, others)
@@ -140,7 +140,7 @@ def log_raw_event_odds(
     
     Args:
         event: Raw event dict from Odds API
-        all_odds_csv: Path to all_odds_analysis.csv
+        all_odds_csv: Path to raw_odds.csv
         au_bookies: List of AU bookmaker keys to include
         bankroll: Bankroll for Kelly stake calculation
         kelly_fraction: Kelly fraction (default 0.25)
@@ -327,13 +327,42 @@ def log_raw_event_odds(
                                     "prob": prob_str,
                                     "stake": stake_str,
                                     "num_sharps": num_sharps_str,
+                                    # Sharp books
                                     "Pinnacle": "",
-                                    "Betfair": "",
+                                    "Betfair_EU": "",
+                                    "Betfair_AU": "",
                                     "Draftkings": "",
                                     "Fanduel": "",
                                     "Betmgm": "",
                                     "Betonline": "",
                                     "Bovada": "",
+                                    "Betus": "",
+                                    "Lowvig": "",
+                                    "Mybookie": "",
+                                    "Marathonbet": "",
+                                    "Matchbook": "",
+                                    # AU target books
+                                    "Sportsbet": "",
+                                    "Bet365": "",
+                                    "Pointsbet": "",
+                                    "Betright": "",
+                                    "Tab": "",
+                                    "Dabble": "",
+                                    "Unibet": "",
+                                    "Ladbrokes": "",
+                                    "Playup": "",
+                                    "Tabtouch": "",
+                                    "Betr": "",
+                                    "Neds": "",
+                                    "Boombet": "",
+                                    # US mass-market books
+                                    "Caesars": "",
+                                    "Betrivers": "",
+                                    "Sugarhouse": "",
+                                    "Superbook": "",
+                                    "Twinspires": "",
+                                    "Wynnbet": "",
+                                    "Williamhill": "",
                                 }
                                 for bk_col in au_books_in_csv:
                                     if bk_col in ["betfair_ex_au", "betfair_ex_eu"]:
@@ -349,7 +378,7 @@ def log_raw_event_odds(
                                     betfair_odds = all_bookie_odds_fallback["betfair_ex_eu"][outcome_key]
                                 if betfair_odds:
                                     all_odds_row["betfair"] = f"{betfair_odds:.3f}"
-                                # Log to all_odds_analysis.csv
+                                # Log to raw_odds.csv
                                 print(f"[DEBUG] Fallback Logging row: event={event_id}, market={market_key_fallback}, selection={selection}, bookmaker={bkey_fallback}, odds={outcome_odds}")
                                 log_all_odds(all_odds_csv, all_odds_row)
                                 any_row_logged = True
@@ -548,13 +577,42 @@ def log_raw_event_odds(
                     "prob": prob_str,
                     "stake": stake_str,
                     "num_sharps": num_sharps_str,
-                    "Pinnacle": "",  # Will be filled from all_bookie_odds
-                    "Betfair": "",   # Will be filled from all_bookie_odds
+                    # Sharp books
+                    "Pinnacle": "",
+                    "Betfair_EU": "",
+                    "Betfair_AU": "",
                     "Draftkings": "",
                     "Fanduel": "",
                     "Betmgm": "",
                     "Betonline": "",
                     "Bovada": "",
+                    "Betus": "",
+                    "Lowvig": "",
+                    "Mybookie": "",
+                    "Marathonbet": "",
+                    "Matchbook": "",
+                    # AU target books
+                    "Sportsbet": "",
+                    "Bet365": "",
+                    "Pointsbet": "",
+                    "Betright": "",
+                    "Tab": "",
+                    "Dabble": "",
+                    "Unibet": "",
+                    "Ladbrokes": "",
+                    "Playup": "",
+                    "Tabtouch": "",
+                    "Betr": "",
+                    "Neds": "",
+                    "Boombet": "",
+                    # US mass-market books
+                    "Caesars": "",
+                    "Betrivers": "",
+                    "Sugarhouse": "",
+                    "Superbook": "",
+                    "Twinspires": "",
+                    "Wynnbet": "",
+                    "Williamhill": "",
                 }
                 
 

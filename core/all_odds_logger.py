@@ -16,7 +16,7 @@ _final_csv_path = None
 
 def log_all_odds(csv_path: Path, row: Dict):
     """
-    Log every single opportunity to all_odds_analysis.csv
+    Log every single opportunity to raw_odds.csv
     No filtering - just raw data for later analysis
     
     Uses atomic write pattern: writes to .tmp file, then renames.

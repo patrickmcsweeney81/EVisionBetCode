@@ -1,5 +1,7 @@
 # EV Bot – Sports Betting Expected Value Finder
 
+This is the legacy EV detection system. **For new projects, use the EV_Finder folder for a modern, clean architecture with FastAPI and web dashboard.**
+
 This bot scans sports betting odds from multiple bookmakers using The Odds API and identifies expected value (EV) opportunities. Arbitrage logic was removed; focus is EV-only.
 
 Fair price calculation now uses a single unified weighting system via `core/book_weights.py` (v2.0). All active handlers (H2H, spreads, totals, player props, NFL props) have migrated to the weighted median model. Legacy percentage functions remain only for backward compatibility and will be removed after validation. See `BOOK_WEIGHTS_INTEGRATION.md` for full details.

@@ -96,7 +96,6 @@ from core.config import (
     ENABLE_EV_FILTER, ENABLE_PROB_FILTER,
     SPORT_PROP_MARKETS
 )
-from core.exotics_logger import log_exotic_value
 
 # Load environment variables
 try:
@@ -109,8 +108,19 @@ except ImportError:
 ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")
 ODDS_API_BASE = os.getenv("ODDS_API_BASE", "https://api.the-odds-api.com/v4")
 REGIONS = os.getenv("REGIONS", "au,us")
-# Disable player props for this run
-MARKETS = "h2h,spreads,totals"
+# Use MARKETS from env; default covers quarters/halves/alternate lines plus player props
+MARKETS = os.getenv(
+    "MARKETS",
+    "h2h,spreads,totals,"  # main
+    "h2h_q1,h2h_q2,h2h_q3,h2h_q4,h2h_h1,h2h_h2,"  # moneyline quarters/halves
+    "spreads_q1,spreads_q2,spreads_q3,spreads_q4,spreads_h1,spreads_h2,"  # spreads quarters/halves
+    "alternate_spreads_q1,alternate_spreads_q2,alternate_spreads_q3,alternate_spreads_q4,alternate_spreads_h1,alternate_spreads_h2,"  # alt spreads
+    "totals_q1,totals_q2,totals_q3,totals_q4,totals_h1,totals_h2,"  # totals quarters/halves
+    "alternate_totals_q1,alternate_totals_q2,alternate_totals_q3,alternate_totals_q4,alternate_totals_h1,alternate_totals_h2,"  # alt totals
+    "team_totals_h1,team_totals_h2,team_totals_q1,team_totals_q2,team_totals_q3,team_totals_q4,"  # team totals
+    "alternate_team_totals_h1,alternate_team_totals_h2,alternate_team_totals_q1,alternate_team_totals_q2,alternate_team_totals_q3,alternate_team_totals_q4,"  # alt team totals
+    "player_points,player_points_q1,player_rebounds,player_rebounds_q1,player_assists,player_assists_q1,player_threes,player_blocks,player_steals,player_blocks_steals,player_turnovers,player_points_rebounds_assists,player_points_rebounds,player_points_assists,player_rebounds_assists,player_field_goals,player_frees_made,player_frees_attempts,player_first_basket,player_first_team_basket,player_double_double,player_triple_double,player_method_of_first_basket,player_points_alternate,player_rebounds_alternate,player_assists_alternate,player_blocks_alternate,player_steals_alternate,player_turnovers_alternate,player_threes_alternate,player_points_assists_alternate,player_points_rebounds_alternate,player_rebounds_assists_alternate,player_points_rebounds_assists_alternate",
+)
 SPORTS = os.getenv("SPORTS", "basketball_nba")
 API_TIER = os.getenv("API_TIER", "medium").lower()  # low|medium|high
 INCLUDE_US_BOOKS = os.getenv("INCLUDE_US_BOOKS", "0").lower() in ("1", "true", "yes", "y")
@@ -177,6 +187,15 @@ def cleanup_data_directory():
     This prevents stale / past games persisting across runs.
     """
     try:
+        # If a previous run left a temp file (Excel lock), promote it to the final name
+        tmp_file = DATA_DIR / f"{ALL_ODDS_CSV.stem}.tmp"
+        if tmp_file.exists() and not ALL_ODDS_CSV.exists():
+            try:
+                tmp_file.rename(ALL_ODDS_CSV)
+                print(f"[clean] Promoted leftover temp to {ALL_ODDS_CSV.name}")
+            except Exception as e:
+                print(f"[clean] Could not promote temp file: {e}")
+
         for fp in DATA_DIR.glob("*.csv"):
             # Always remove allowed + extraneous; raw logger will recreate headers as needed.
             try:
@@ -1029,33 +1048,6 @@ def process_player_props_market(event: Dict, seen: Dict[str, bool], prop_markets
                 # print(f"[EV] {bookmakers_str:20s} {player_name[:20]:20s} U{line:4.1f} {under_odds:.3f} (fair={fair_under:.3f}, edge={edge*100:.1f}%, stake={stake_display})")
                 hits += 1
         
-        # --- One-sided/exotic market filter ---
-                # If only Over or only Under odds are available, log to exotics_value.csv and skip main EV logging
-                has_over = any('Over' in odds and odds['Over'] > 0 for odds in bookmakers_data.values())
-                has_under = any('Under' in odds and odds['Under'] > 0 for odds in bookmakers_data.values())
-                if not (has_over and has_under):
-                    exotics_csv = DATA_DIR / "exotics_value.csv"
-                    exotics_row = {
-                        "start_time": format_local_time(commence_time),
-                        "sport": abbreviate_sport(sport_key),
-                        "event": abbreviate_event(away_team, home_team),
-                        "market": abbreviate_market(market_key),
-                        "selection": player_name,
-                        "line": f"Over {line}" if has_over else f"Under {line}",
-                        "book": bookmakers_str,
-                        "price": f"{over_odds if has_over else under_odds:.3f}",
-                        "Pinnacle": f"{pin_over if has_over else pin_under:.3f}" if (pin_over > 0 or pin_under > 0) else "",
-                        "Betfair": "",
-                    }
-                    for bk_key in CSV_BOOKIES:
-                        if bk_key in bookmakers_data:
-                            prop_odds = bookmakers_data[bk_key].get("Over" if has_over else "Under", 0)
-                            if prop_odds > 0:
-                                exotics_row[bk_key] = f"{prop_odds:.3f}"
-                    log_exotic_value(exotics_csv, exotics_row)
-                    continue
-                # --- End one-sided/exotic market filter ---
-    
     return hits
 
 
@@ -1070,9 +1062,11 @@ def scan_sport(sport_key: str, seen: Dict[str, bool]) -> Dict[str, int]:
     if user_prop_markets:
         # User explicitly specified prop markets in .env
         prop_markets = user_prop_markets
+        print(f"[DEBUG] Using user prop markets: {prop_markets}")
     else:
         # Use sport-specific default prop markets from config
         prop_markets = SPORT_PROP_MARKETS.get(sport_key, [])
+        print(f"[DEBUG] Using config prop markets: {prop_markets}")
 
     # Apply API_TIER policy
     # low: props disabled, regions au only
@@ -1095,18 +1089,17 @@ def scan_sport(sport_key: str, seen: Dict[str, bool]) -> Dict[str, int]:
     if prop_markets:
         print(f"[DEBUG] Will fetch {len(prop_markets)} prop markets for {sport_key}")
     
-    url = f"{ODDS_API_BASE}/sports/{sport_key}/odds"
-    params = {
+    # Fetch event list only (lean), then pull odds per event to avoid oversized payloads
+    events_url = f"{ODDS_API_BASE}/sports/{sport_key}/events"
+    events_params = {
         "apiKey": ODDS_API_KEY,
         "regions": regions_effective,
-        "markets": ",".join(main_markets) if main_markets else "h2h",
-        "oddsFormat": "decimal",
     }
-    
-    print(f"\n[API] Fetching {sport_key}: regions={REGIONS}, markets={','.join(main_markets)}")
-    
+
+    print(f"\n[API] Fetching event list for {sport_key}: regions={regions_effective}")
+
     try:
-        resp = requests.get(url, params=params, timeout=30)
+        resp = requests.get(events_url, params=events_params, timeout=30)
         resp.raise_for_status()
         events = resp.json()
     except Exception as e:
@@ -1115,7 +1108,7 @@ def scan_sport(sport_key: str, seen: Dict[str, bool]) -> Dict[str, int]:
 
     API_USAGE["sports_calls"] += 1
     
-    print(f"[scan] Processing {len(events)} events")
+    print(f"[scan] Processing {len(events)} events (list)")
     
     # Filter events by time before logging to CSV
     filtered_events = []
@@ -1170,84 +1163,84 @@ def scan_sport(sport_key: str, seen: Dict[str, bool]) -> Dict[str, int]:
         print(f"[filter] Skipped {skipped_too_soon} starting <{MIN_TIME_TO_START_MINUTES}min, {skipped_too_far} starting >{MAX_TIME_TO_START_HOURS}hrs")
     print(f"[filter] Processing {len(filtered_events)} events after time filter")
     
-    # Log ALL filtered raw odds to raw_odds.csv (with fair prices calculated)
     from core.raw_odds_logger import log_raw_event_odds
-    # Cache by event.id + main_markets to avoid duplicate processing within a run
+    ev_hits = 0
     cache_key_sport = f"{sport_key}|{','.join(main_markets)}"
     cached_event_ids = SESSION_EVENT_CACHE.get(cache_key_sport, set())
+
     for event in filtered_events:
-        eid = event.get("id")
-        if eid and eid in cached_event_ids:
+        event_id = event.get("id", "")
+        if not event_id:
             continue
-        log_raw_event_odds(event, ALL_ODDS_CSV, list(ACTIVE_BOOKIES), BANKROLL, KELLY_FRACTION, BETFAIR_COMMISSION)
-        if eid:
-            EVENT_CACHE[eid] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-            cached_event_ids.add(eid)
+
+        # Skip duplicates within run
+        if event_id in cached_event_ids:
+            continue
+
+        # Fetch odds for this event (main markets only)
+        event_odds_url = f"{ODDS_API_BASE}/sports/{sport_key}/events/{event_id}/odds"
+        event_params = {
+            "apiKey": ODDS_API_KEY,
+            "regions": regions_effective,
+            "markets": ",".join(main_markets) if main_markets else "h2h",
+            "oddsFormat": "decimal",
+        }
+
+        try:
+            resp_event = requests.get(event_odds_url, params=event_params, timeout=30)
+            resp_event.raise_for_status()
+            event_odds = resp_event.json()
+        except Exception as e:
+            print(f"[event odds error] {event_id}: {e}")
+            API_USAGE["event_calls_errors"] = API_USAGE.get("event_calls_errors", 0) + 1
+            continue
+
+        API_USAGE["event_calls"] = API_USAGE.get("event_calls", 0) + 1
+
+        # Enrich event with bookmakers from odds call
+        event_with_odds = event.copy()
+        event_with_odds["bookmakers"] = event_odds.get("bookmakers", [])
+
+        # Log main markets
+        log_raw_event_odds(event_with_odds, ALL_ODDS_CSV, list(ACTIVE_BOOKIES), BANKROLL, KELLY_FRACTION, BETFAIR_COMMISSION)
+        EVENT_CACHE[event_id] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        cached_event_ids.add(event_id)
+
+        # Process EV handlers on enriched event
+        if "h2h" in MARKETS:
+            ev_hits += process_h2h_market(event_with_odds, seen)
+        if "spreads" in MARKETS:
+            ev_hits += process_spreads_market(event_with_odds, seen)
+        if "totals" in MARKETS:
+            ev_hits += process_totals_market(event_with_odds, seen)
+
+        # Process player props via separate API call per event
+        if prop_markets and props_enabled:
+            try:
+                for prop_market in prop_markets:
+                    prop_params = {
+                        "apiKey": ODDS_API_KEY,
+                        "regions": regions_effective,
+                        "markets": prop_market,
+                        "oddsFormat": "decimal",
+                    }
+                    try:
+                        resp_prop = requests.get(event_odds_url, params=prop_params, timeout=30)
+                        resp_prop.raise_for_status()
+                        prop_event_data = resp_prop.json()
+                        if prop_event_data.get('bookmakers'):
+                            event_enriched = event.copy()
+                            event_enriched["bookmakers"] = prop_event_data.get("bookmakers", [])
+                            log_raw_event_odds(event_enriched, ALL_ODDS_CSV, list(ACTIVE_BOOKIES), BANKROLL, KELLY_FRACTION, BETFAIR_COMMISSION)
+                    except Exception:
+                        pass
+                    API_USAGE["props_calls"] += 1
+            except Exception:
+                pass
+
     SESSION_EVENT_CACHE[cache_key_sport] = cached_event_ids
     print(f"[OK] Logged all raw odds with fair prices to {ALL_ODDS_CSV.name}")
-    
-    ev_hits = 0
-    
-    for event in filtered_events:
-        
-        # Process h2h market
-        if "h2h" in MARKETS:
-            ev_hits += process_h2h_market(event, seen)
-        
-        # Process spreads market
-        if "spreads" in MARKETS:
-            ev_hits += process_spreads_market(event, seen)
-        
-        # Process totals market
-        if "totals" in MARKETS:
-            ev_hits += process_totals_market(event, seen)
-        
-        # Process player props (tier-controlled)
-        if props_enabled and prop_markets:
-            # Need to fetch event with player props separately
-            try:
-                event_id = event.get("id")
-                prop_url = f"{ODDS_API_BASE}/sports/{sport_key}/events/{event_id}/odds"
-                # Batch all markets into single API call (already optimized!)
-                prop_params = {
-                    "apiKey": ODDS_API_KEY,
-                    "regions": regions_effective,
-                    "markets": ",".join(prop_markets),
-                    "oddsFormat": "decimal",
-                }
-                # Cache props by event.id + prop_markets
-                cache_key_props = f"{event_id}|{','.join(prop_markets)}|{regions_effective}"
-                if cache_key_props in SESSION_PROPS_CACHE:
-                    prop_event = SESSION_PROPS_CACHE[cache_key_props]
-                else:
-                    resp = requests.get(prop_url, params=prop_params, timeout=30)
-                    resp.raise_for_status()
-                    prop_event = resp.json()
-                    SESSION_PROPS_CACHE[cache_key_props] = prop_event
-                    API_USAGE["props_calls"] += 1
-                
-                # Merge prop data into event
-                event_with_props = event.copy()
-                event_with_props["bookmakers"] = prop_event.get("bookmakers", [])
-                
-                # Log player props to raw_odds.csv
-                from core.raw_odds_logger import log_raw_event_odds
-                log_raw_event_odds(event_with_props, ALL_ODDS_CSV, list(ACTIVE_BOOKIES), BANKROLL, KELLY_FRACTION, BETFAIR_COMMISSION)
-                # (Removed all other CSV exports except raw_odds.csv and all_odds.csv)
-                
-                # Use sport-specific handler for NFL
-                if sport_key == "americanfootball_nfl":
-                    # prop_hits = process_nfl_props_market(event_with_props, seen, prop_markets)  # Function not defined, skip for now
-                    prop_hits = 0
-                else:
-                    prop_hits = process_player_props_market(event_with_props, seen, prop_markets)
-                
-                if prop_hits > 0:
-                    print(f"[PROPS] Found {prop_hits} prop hits for {event.get('home_team', '')}")
-                ev_hits += prop_hits
-            except Exception as e:
-                print(f"[!] Props API error for {event.get('home_team', '')}: {e}")
-                pass
+
     
     API_USAGE["events_processed"] += len(filtered_events)
     API_USAGE["events_skipped_time"] += (skipped_too_soon + skipped_too_far)

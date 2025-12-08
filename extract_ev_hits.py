@@ -11,7 +11,8 @@ from pathlib import Path
 # Configuration
 EV_MIN_THRESHOLD = 3.0  # Minimum 3% edge for profitable bets
 EV_MAX_THRESHOLD = 30.0  # Exclude extreme EVs (data quality issues)
-INPUT_CSV = Path("data/all_odds_analysis.csv")
+# Default to the main raw odds dump produced by ev_arb_bot.py
+INPUT_CSV = Path("data/raw_odds.csv")
 OUTPUT_CSV = Path("data/ev_hits.csv")
 
 def extract_ev_hits():

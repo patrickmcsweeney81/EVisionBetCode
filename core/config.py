@@ -157,11 +157,14 @@ WEIGHT_OTHER_SHARPS = 0.25   # Other sharp books get 25% weight (median)
 # PLAYER PROPS MARKETS BY SPORT
 # ============================================================================
 
-# NBA Basketball Props
+# NBA / NCAAB / WNBA Basketball Props
 NBA_PROP_MARKETS = [
     "player_points",
+    "player_points_q1",
     "player_rebounds",
+    "player_rebounds_q1",
     "player_assists",
+    "player_assists_q1",
     "player_threes",
     "player_blocks",
     "player_steals",
@@ -171,10 +174,31 @@ NBA_PROP_MARKETS = [
     "player_points_rebounds",
     "player_points_assists",
     "player_rebounds_assists",
+    "player_field_goals",
+    "player_frees_made",
+    "player_frees_attempts",
+    "player_first_basket",
+    "player_first_team_basket",
     "player_double_double",
     "player_triple_double",
-    "player_first_basket",
+    "player_method_of_first_basket",
+    # Alternate lines
+    "player_points_alternate",
+    "player_rebounds_alternate",
+    "player_assists_alternate",
+    "player_blocks_alternate",
+    "player_steals_alternate",
+    "player_turnovers_alternate",
+    "player_threes_alternate",
+    "player_points_assists_alternate",
+    "player_points_rebounds_alternate",
+    "player_rebounds_assists_alternate",
+    "player_points_rebounds_assists_alternate",
 ]
+
+# Reuse NBA prop set for NCAAB and WNBA
+NCAAB_PROP_MARKETS = NBA_PROP_MARKETS
+WNBA_PROP_MARKETS = NBA_PROP_MARKETS
 
 # NFL American Football Props - High liquidity markets only
 # Removed: longest_completion, rush_longest, reception_longest, solo_tackles, 
@@ -244,6 +268,8 @@ SOCCER_PROP_MARKETS = [
 # Map sport keys to their prop markets
 SPORT_PROP_MARKETS = {
     "basketball_nba": NBA_PROP_MARKETS,
+    "basketball_ncaab": NCAAB_PROP_MARKETS,
+    "basketball_wnba": WNBA_PROP_MARKETS,
     "americanfootball_nfl": NFL_PROP_MARKETS,
     "aussierules_afl": AFL_PROP_MARKETS,
     "rugbyleague_nrl": NRL_PROP_MARKETS,

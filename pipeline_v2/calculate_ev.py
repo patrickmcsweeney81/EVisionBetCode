@@ -27,7 +27,11 @@ RAW_CSV = Path(__file__).parent.parent / "data" / "raw_odds_pure.csv"
 EV_CSV = Path(__file__).parent.parent / "data" / "ev_opportunities.csv"
 
 # Database connection
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://evisionbet_user:Rlb0zu7fmNmpAawcywknIWsRrOf0o4Rs@dpg-d4jus5ruibrs73f4hfm0-a/evisionbet")
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL environment variable is not set. Please set it in your environment (e.g., in .env file)."
+    )
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

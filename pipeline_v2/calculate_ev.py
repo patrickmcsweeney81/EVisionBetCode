@@ -67,6 +67,8 @@ SHARP_COLS = [
     "Betus",
     "Betfair_AU",
     "Betfair_EU",
+    "Marathonbet",
+    "Matchbook",
 ]
 
 # Limit EV targets to AU books present in this dataset

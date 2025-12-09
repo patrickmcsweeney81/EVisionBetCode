@@ -195,7 +195,11 @@ def group_rows_wide(rows: List[Dict]) -> Dict[Tuple[str, str, str, str, str], Li
 
 
 def extract_sides(rows: List[Dict]) -> Tuple[Dict, Dict]:
-    """Return two sides (A, B) from the grouped rows."""
+    """Return two sides (A, B) from the grouped rows.
+    
+    If multiple rows exist for same side (different timestamps), 
+    prefer the one with most bookmaker coverage.
+    """
     def is_over(sel: str) -> bool:
         s = sel.lower()
         return s.startswith("over") or s.endswith(" over")
@@ -203,9 +207,26 @@ def extract_sides(rows: List[Dict]) -> Tuple[Dict, Dict]:
     def is_under(sel: str) -> bool:
         s = sel.lower()
         return s.startswith("under") or s.endswith(" under")
+    
+    def count_bookmaker_odds(row: Dict) -> int:
+        """Count non-zero bookmaker odds in this row."""
+        count = 0
+        for key, val in row.items():
+            if key not in META_COLS and val:
+                try:
+                    if float(val) > 1:
+                        count += 1
+                except:
+                    pass
+        return count
 
-    over_row = next((r for r in rows if is_over(r.get("selection", ""))), None)
-    under_row = next((r for r in rows if is_under(r.get("selection", ""))), None)
+    # Get all over/under rows
+    over_rows = [r for r in rows if is_over(r.get("selection", ""))]
+    under_rows = [r for r in rows if is_under(r.get("selection", ""))]
+    
+    # Pick the row with most bookmaker coverage (handles duplicate timestamps)
+    over_row = max(over_rows, key=count_bookmaker_odds) if over_rows else None
+    under_row = max(under_rows, key=count_bookmaker_odds) if under_rows else None
 
     if over_row and under_row:
         return over_row, under_row

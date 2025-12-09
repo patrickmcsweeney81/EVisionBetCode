@@ -1,4 +1,4 @@
-# Handoff Document – December 9, 2025
+# Handoff Document – December 10, 2025
 
 ## Current Project State
 
@@ -48,41 +48,136 @@
 - Player props properly isolated per player (5-tuple key: sport, event_id, market, point, player_name).
 - Deduplication working (SHA1 hashes, seen_hits.json).
 
-### Recent Cleanup (Dec 9, 2025)
-- Removed 8 helper/debug/backup files from `pipeline_v2/` (apply_fixes.py, FILTER_LOGIC.py, check_data.py, debug_props.py, sample_raw.py, test_api_simple.py, raw_odds_pure.py.backup, FIXES_TO_APPLY.py).
-- Kept core files: raw_odds_pure.py, calculate_ev.py, README.md.
+### Recent Updates (Dec 10, 2025)
+
+**Bookmaker Ratings System (MAJOR):**
+- Implemented 1-4 star rating system for 52 bookmakers
+- 4⭐ (4 books): Pinnacle, Betfair_EU, Draftkings, Fanduel - 35% weight
+- 3⭐ (7 books): Betfair_AU, Betfair_UK, Betmgm, Betrivers, Betsson, Marathonbet, Lowvig - 40% weight
+- 2⭐ (4 books): Nordicbet, Mybookie, Betonline, Betus - 15% weight
+- 1⭐ (37 books): Target bookmakers (AU/US secondaries) - 10% weight
+- Created `pipeline_v2/bookmaker_ratings.py` with sport-specific weight profiles
+
+**Fair Odds Calculation - CRITICAL BUG FIX:**
+- **Issue:** Fair odds were showing 1.1877 when they should be ~1.93 (calculation was using single weight total for both Over/Under sides)
+- **Root cause:** After outlier filtering, Over and Under sides had different book coverage but shared one weight denominator
+- **Fix:** Calculate separate weight totals for Over and Under sides after outlier filtering
+- **Impact:** 26 false positives reduced to 1 legitimate opportunity; fair odds now accurate
+- **Documentation:** `docs/BUGFIX_FAIR_ODDS_DEC10_2025.md`
+
+**Outlier Detection:**
+- Added 5% tolerance filter to remove stale/aberrant odds before weighting
+- Weighted average now used instead of simple median
+- Sport-specific profiles: NBA/NFL (35/40/15/10), NHL (50/30/10/10), Cricket/Tennis (65-75/15-25/5/5)
+
+**Duplicate Row Issue (DISCOVERED):**
+- Raw CSV has duplicate rows from multiple API calls (different timestamps)
+- `extract_sides()` was picking first row which often had missing bookmaker data
+- **Fix implemented:** Now selects row with most bookmaker coverage
+- **Result:** 7 missed EV opportunities now being detected (e.g., Mikal Bridges Under @Betr 2.40 vs fair 2.14 = +12.16%)
+
+**Outlier Test Tool (NEW):**
+- Created `pipeline_v2/outlier_test.py` - highlights AU books 3%+ above best sharp
+- Output: `data/outlier_highlights.csv` with YELLOW flag column
+- Found 63 outlier opportunities, 7 of which are true EV opportunities
+- Created `pipeline_v2/check_outliers_ev.py` to validate outliers against fair odds engine
 
 ---
 
-## What's Next (Priority Order)
+## Outstanding Items & Next Steps
 
-### Phase 1: Wire Web UI to Pipeline Data (This Week)
-**Goal:** Show EV opportunities in a web table with filters.
+### 🔴 CRITICAL - Fix Duplicate Rows in Raw CSV
+**Issue:** Multiple API calls create duplicate rows with different timestamps/bookmaker coverage
+**Impact:** 7 EV opportunities missed (Mikal Bridges +12.16%, Scottie Barnes +6.65%, etc.)
+**Current workaround:** `extract_sides()` now picks row with most bookmaker coverage
+**Permanent fix needed:**
+- **Option 1 (RECOMMENDED):** Deduplicate in `raw_odds_pure.py` - keep only latest timestamp per (event_id, market, point, selection)
+- **Option 2:** Separate CSV per extraction with timestamp in filename
+- **Option 3:** Switch to database with proper schema (see database design below)
 
-1. **Build minimal FastAPI endpoint** (in `EV_Finder`):
-   - `GET /api/hits` → reads `..\..\EV_ARB Bot VSCode\data\ev_opportunities.csv`, returns JSON.
-   - Filters: sport, market, minEV, bookmaker, page/limit.
-   - CORS enabled for local dev.
+### 🟡 HIGH PRIORITY - Database Architecture for Web App
+**Requirements from user:**
+1. Website always uses newest raw odds data
+2. Track line movement (flag large odds changes between extractions)
+3. Auto-archive: Move started games to "Post Game" DB, auto-delete after 48hrs
 
-2. **Front-end integration**:
-   - Fetch from API → display in table.
-   - Add filters (min EV slider, sport dropdown, market dropdown).
-   - Mobile-responsive.
+**Proposed PostgreSQL Schema:**
+```sql
+-- Active odds (pre-game)
+CREATE TABLE live_odds (
+    id SERIAL PRIMARY KEY,
+    extracted_at TIMESTAMP DEFAULT NOW(),
+    sport VARCHAR(50),
+    event_id VARCHAR(100),
+    commence_time TIMESTAMP,
+    market VARCHAR(50),
+    point DECIMAL,
+    selection VARCHAR(100),
+    bookmaker VARCHAR(50),
+    odds DECIMAL(10,2),
+    odds_previous DECIMAL(10,2),  -- From last extraction
+    line_movement DECIMAL(10,2),  -- Percentage change
+    INDEX(event_id, market, selection),
+    INDEX(commence_time),
+    INDEX(extracted_at)
+);
 
-3. **Deploy locally** → test end-to-end.
+-- Line movement alerts
+CREATE TABLE line_movements (
+    id SERIAL PRIMARY KEY,
+    detected_at TIMESTAMP DEFAULT NOW(),
+    event_id VARCHAR(100),
+    market VARCHAR(50),
+    selection VARCHAR(100),
+    bookmaker VARCHAR(50),
+    old_odds DECIMAL(10,2),
+    new_odds DECIMAL(10,2),
+    change_pct DECIMAL(10,2),
+    INDEX(detected_at)
+);
 
-### Phase 2: Enhance (Next Week)
-- Detail drawer (click row → see all bookmaker odds for that market).
-- Column chooser (toggle which columns visible).
-- Sort/export options.
-- Bookmarking filters.
+-- Post-game archive (48hr retention)
+CREATE TABLE postgame_odds (
+    id SERIAL PRIMARY KEY,
+    archived_at TIMESTAMP DEFAULT NOW(),
+    original_data JSONB,  -- Full row from live_odds
+    game_started_at TIMESTAMP,
+    expires_at TIMESTAMP,  -- archived_at + 48hrs
+    INDEX(expires_at)
+);
 
-### Phase 3: Production (2+ Weeks)
-- Auth (email magic link).
-- Database (SQLite/Postgres instead of CSV).
-- Scheduled bot runs (cron).
-- Telegram/Email alerts.
-- Subscription logic.
+-- Scheduled cleanup job: DELETE FROM postgame_odds WHERE expires_at < NOW()
+```
+
+**Pipeline Integration:**
+- `raw_odds_pure.py` writes to `live_odds` table (upsert by event_id+market+selection+bookmaker)
+- Detect line movement: if `ABS((new_odds - old_odds) / old_odds) > 0.05` → insert to `line_movements`
+- Cron job (every 5 min): `INSERT INTO postgame_odds SELECT * FROM live_odds WHERE commence_time < NOW()`
+- Cron job (hourly): `DELETE FROM postgame_odds WHERE expires_at < NOW()`
+
+### 🟢 MEDIUM PRIORITY - Enhancements
+- **Outlier highlights on web UI:** Show YELLOW flag for AU books 3%+ above sharps
+- **Line movement widget:** Display recent significant odds changes
+- **Bookmaker coverage indicator:** Show which sharps available per market
+- **Historical EV tracking:** Log all detected opportunities for pattern analysis
+
+### 🔵 LOW PRIORITY - Web UI Phase 1
+**Goal:** Show EV opportunities in web table
+1. Build FastAPI endpoint reading `ev_opportunities.csv`
+2. Front-end table with filters (sport, market, minEV, bookmaker)
+3. Mobile-responsive design
+
+### 🔵 LOW PRIORITY - Web UI Phase 2
+- Detail drawer (all bookmaker odds for market)
+- Column chooser
+- Sort/export
+- Bookmarking filters
+
+### 🔵 LOW PRIORITY - Production
+- Auth (email magic link)
+- Scheduled bot runs
+- Telegram/Email alerts
+- Subscription logic
 
 ---
 
@@ -142,10 +237,12 @@ git push
 
 ## Critical Notes
 
-### Sharps & Fair Prices
-- Sharp books (for fair odds): Pinnacle, Betfair_EU/AU, DraftKings, FanDuel, BetMGM, Betonline, Bovada, Lowvig, MyBookie, Betus, Marathonbet, Matchbook.
-- AU target books: Sportsbet, Pointsbet, Betright, Tab, Neds, Ladbrokes, Bet365, Dabble, Unibet, Playup, Tabtouch, Betr, Boombet.
-- Fair odds = **median** of sharp books with 2+ coverage requirement.
+### Sharps & Fair Prices (UPDATED DEC 10)
+- **52 bookmakers** with 1-4 star ratings (see `pipeline_v2/bookmaker_ratings.py`)
+- **Sharp books (3⭐+4⭐):** Pinnacle, Betfair_EU, Draftkings, Fanduel, Betfair_AU, Betfair_UK, Betmgm, Betrivers, Betsson, Marathonbet, Lowvig (11 total)
+- **Target books (1⭐):** Sportsbet, Pointsbet, Tab, Tabtouch, Betr, Neds, Boombet, plus 30 US/EU secondaries (37 total)
+- **Fair odds = weighted average** of sharp books (after devig + outlier removal) with 10% minimum weight coverage
+- **Sport-specific profiles:** 8 sports configured with different weight distributions
 
 ### Player Props Grouping (Critical Fix Dec 2025)
 - Each player gets isolated evaluation (5-tuple key prevents cross-player contamination).
@@ -207,5 +304,21 @@ Kelly stake = bankroll × kelly_fraction × edge / (odds - 1)
 
 ---
 
-**Last updated:** December 9, 2025 09:14 AM UTC  
-**Status:** Ready for Phase 1 (Web UI integration).
+## Recent Commits (Dec 10, 2025)
+- `439a4fa` - Add bookmaker ratings system with weighted fair odds
+- `349545f` - Document fair odds calculation bug fix
+- `1250b27` - Update Copilot instructions with bookmaker ratings and bug fix
+
+## Files Added/Modified (Dec 10)
+- `pipeline_v2/bookmaker_ratings.py` (NEW) - 52 bookmakers with 1-4 star ratings, sport profiles
+- `pipeline_v2/calculate_ev.py` (MODIFIED) - Fixed fair odds bug, updated extract_sides() for duplicate handling
+- `pipeline_v2/outlier_test.py` (NEW) - Detects AU books 3%+ above sharps
+- `pipeline_v2/check_outliers_ev.py` (NEW) - Validates outliers with fair odds engine
+- `docs/BUGFIX_FAIR_ODDS_DEC10_2025.md` (NEW) - Critical bug fix documentation
+- `docs/FAIR_ODDS_CALCULATION.md` (NEW) - Methodology documentation
+- `.github/copilot-instructions.md` (UPDATED) - Latest system changes
+
+---
+
+**Last updated:** December 10, 2025 16:45 UTC  
+**Status:** Bookmaker ratings system complete. Fair odds bug fixed. Database architecture pending for web app.

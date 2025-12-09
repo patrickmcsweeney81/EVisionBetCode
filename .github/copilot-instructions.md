@@ -2,7 +2,7 @@
 
 **Project:** EV_ARB Bot – Sports Betting Expected Value Finder  
 **Status:** Production-ready (Pipeline V2)  
-**Last Updated:** December 9, 2025
+**Last Updated:** December 10, 2025
 
 ---
 
@@ -54,13 +54,23 @@ This project identifies **expected value (EV) opportunities** in sports betting 
 
 Fair odds represent the "true" market price without bookmaker margins.
 
-**Sharp Bookmakers (12 total):**
-- Pinnacle, DraftKings, FanDuel, BetMGM, BetOnline, Bovada, LowVig, MyBookie, Betus, Betfair_AU, Betfair_EU
+**Bookmaker Ratings System (52 total books):**
+- **4-star (4 books):** Pinnacle, Betfair_EU, Draftkings, Fanduel - 35% weight (8.75% each)
+- **3-star (7 books):** Betfair_AU, Betfair_UK, Betmgm, Betrivers, Betsson, Marathonbet, Lowvig - 40% weight (5.71% each)
+- **2-star (4 books):** Nordicbet, Mybookie, Betonline, Betus - 15% weight (3.75% each)
+- **1-star (37 books):** Target bookmakers (Sportsbet, Pointsbet, etc.) - 10% weight (used for EV detection, not fair odds)
 
-**Calculation:**
-- Betfair odds adjusted for 6% commission
-- Fair price = **median** of available sharp odds
-- Requires minimum **2 sharp sources** for validity
+**Calculation Method:**
+1. Devig each sharp bookmaker's two-way odds (Over/Under)
+2. Remove outliers (5% tolerance from median)
+3. Calculate **weighted average** using bookmaker ratings
+4. Use **separate weight totals** for Over and Under sides (critical - see BUGFIX_FAIR_ODDS_DEC10_2025.md)
+5. Requires minimum 10% weight coverage for validity
+
+**Sport-Specific Weight Profiles:**
+- NBA/NFL/Soccer: Standard (35/40/15/10)
+- NHL: Pinnacle-heavy (50/30/10/10)
+- Cricket/Tennis: Betfair-dominated (65-75/15-25/5/5)
 
 ### 2. Player Props Grouping (Critical)
 
@@ -81,9 +91,10 @@ EV% = (fair_odds / market_odds - 1) × 100
 - **EV >= 1%** = Reported opportunity
 - **EV < 1%** = Filtered out
 
-**Current Results (Dec 9, 2025):**
-- 1,209 raw rows extracted
-- 51 EV opportunities identified
+**Current Results (Dec 10, 2025):**
+- 3,238 raw rows extracted (NBA only)
+- 1 EV opportunity identified (conservative detection with accurate fair odds)
+- Fair odds calculation fixed: weighted average now uses separate totals for Over/Under sides
 
 ---
 
@@ -172,9 +183,14 @@ python pipeline_v2/calculate_ev.py
 
 ### Modifying Fair Price Logic
 
+File: `pipeline_v2/bookmaker_ratings.py`
+- `BOOKMAKER_RATINGS` - Dict of all 52 bookmakers with 1-4 star ratings
+- `SPORT_WEIGHT_PROFILES` - Sport-specific weight distributions
+- `load_weight_config(sport)` - Get weights for specific sport
+- `get_sharp_books_only()` - Returns 3⭐+4⭐ books for fair odds
+
 File: `pipeline_v2/calculate_ev.py`
-- `SHARP_COLS` - List of sharp bookmakers
-- `fair_from_sharps()` - Fair odds calculation
+- `fair_from_sharps()` - Weighted fair odds calculation with outlier removal
 - `EV_MIN_EDGE` - Threshold (default 1%)
 
 ---
@@ -191,15 +207,19 @@ File: `pipeline_v2/calculate_ev.py`
 
 ## Recent Changes (December 2025)
 
+✅ **Bookmaker Ratings System (Dec 10):** Implemented 1-4 star rating system (52 books total) with weighted fair odds calculation. Sport-specific weight profiles for 8 sports.
+
+✅ **Fair Odds Bug Fixed (Dec 10):** CRITICAL - Fixed weighted average calculation that was using single weight total for both Over/Under sides. Fair odds now accurate (~1.93 instead of 1.19). See docs/BUGFIX_FAIR_ODDS_DEC10_2025.md.
+
+✅ **Outlier Detection (Dec 10):** Added 5% tolerance filter to remove stale/aberrant odds before weighting.
+
 ✅ **Player Props Grouping Fixed:** Critical bug where multiple players were grouped together is now fixed. Each player evaluated independently.
 
-✅ **Pinnacle Added:** Sharp bookmaker list expanded to 12 sources including Pinnacle.
+✅ **Bookmaker Expansion (Dec 10):** 52 bookmakers supported (from 15). Configurable BOOKMAKER_ORDER environment variable.
 
 ✅ **sharp_book_count Column:** Added to output showing number of sharp sources per opportunity.
 
 ✅ **NHL Support:** Added NHL core markets. Player props not available per API.
-
-✅ **File Cleanup:** Removed temporary debug files (check_*.py, test_*.py, etc.)
 
 ---
 
@@ -208,9 +228,10 @@ File: `pipeline_v2/calculate_ev.py`
 ### Preservation Rules
 1. **Deduplication:** Maintain seen_hits.json logic
 2. **Per-player isolation:** Keep 5-tuple grouping key in calculate_ev.py
-3. **Sharp list:** Expand carefully; validate fair price logic
-4. **Error handling:** Graceful degradation for missing sharps/props
-5. **API efficiency:** Cache events; minimize redundant calls
+3. **Separate weight totals:** CRITICAL - Over and Under sides must have independent weight totals after outlier filtering
+4. **Sharp list:** Expand carefully; validate fair price logic
+5. **Error handling:** Graceful degradation for missing sharps/props
+6. **API efficiency:** Cache events; minimize redundant calls
 
 ### Testing Requirements
 - Run with 3+ sports / 100+ rows to validate grouping

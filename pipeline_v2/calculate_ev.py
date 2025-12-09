@@ -54,7 +54,7 @@ META_COLS = {
 }
 
 # Treat these as sharp sources (must have BOTH sides to be used)
-# Requested: Pinnacle plus attached majors
+# Expanded: All major sharp bookmakers across regions
 SHARP_COLS = [
     "Pinnacle",
     "Draftkings",
@@ -64,26 +64,25 @@ SHARP_COLS = [
     "Bovada",
     "Lowvig",
     "Mybookie",
-    "Betus",
+    "Betrivers",
     "Betfair_AU",
     "Betfair_EU",
+    "Betfair_UK",
     "Marathonbet",
-    "Matchbook",
+    "Betsson",
+    "Nordicbet",
 ]
 
 # Limit EV targets to AU books present in this dataset
 AU_TARGET_BOOKS = {
     "Sportsbet",
     "Pointsbet",
-    "Betright",
     "Tab",
-    "Dabble",
-    "Unibet",
-    "Ladbrokes",
-    "Playup",
     "Tabtouch",
-    "Betr",
+    "Unibet_AU",
+    "Ladbrokes_AU",
     "Neds",
+    "Betr",
     "Boombet",
     "Betfair_AU",  # include exchange if present
 }

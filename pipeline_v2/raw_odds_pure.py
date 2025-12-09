@@ -130,52 +130,98 @@ BASE_HEADERS = [
     "selection",
 ]
 
-# Bookmaker column order: Sharp books first, then AU, then others
-BOOKMAKER_ORDER = [
+# Bookmaker column order: Sharp books first, then AU, then US/EU/UK
+DEFAULT_BOOKMAKER_ORDER = [
     # Sharp books (fair price sources)
     "Pinnacle",
     "Betfair_EU",
+    "Betfair_UK",
     "Betfair_AU",
     "Draftkings",
     "Fanduel",
     "Betmgm",
     "Betonline",
     "Bovada",
-    "Marathonbet",
-    "Matchbook",
     "Lowvig",
     "Mybookie",
-    "Betus",
+    "Betrivers",
+    "Marathonbet",
+    "Betsson",
+    "Nordicbet",
     # AU books (primary target)
     "Sportsbet",
-    "Bet365",
     "Pointsbet",
-    "Betright",
     "Tab",
-    "Dabble",
-    "Unibet",
-    "Ladbrokes",
-    "Playup",
     "Tabtouch",
-    "Betr",
+    "Unibet_AU",
+    "Ladbrokes_AU",
     "Neds",
+    "Betr",
     "Boombet",
     # US books
-    "Caesars",
-    "Betrivers",
-    "Sugarhouse",
-    "Superbook",
-    "Twinspires",
-    "Wynnbet",
-    "Williamhill",
+    "Williamhill_US",
+    "Sbk",
+    "Fanatics",
+    "Ballybet",
+    "Betparx",
+    "Espnbet",
+    "Fliff",
+    "Hardrockbet",
+    "Rebet",
+    # UK books
+    "Williamhill_UK",
+    "Betvictor",
+    "Bwin",
+    "Coral",
+    "Skybet",
+    "Paddypower",
+    "Boylesports",
+    "Betfred",
+    # EU books
+    "Williamhill_EU",
+    "Codere",
+    "Tipico",
+    "Leovegas",
+    "Parionssport",
+    "Winamax_FR",
+    "Winamax_DE",
+    "Unibet_FR",
+    "Unibet_NL",
+    "Unibet_SE",
+    "Betclic",
 ]
+
+def parse_bookmaker_order() -> List[str]:
+    """Allow overriding bookmaker column order via BOOKMAKER_ORDER env.
+
+    Example: BOOKMAKER_ORDER="Pinnacle,Betfair_EU,Draftkings,Fanduel"
+    """
+    override = os.getenv("BOOKMAKER_ORDER", "")
+    if not override:
+        return DEFAULT_BOOKMAKER_ORDER
+
+    parsed: List[str] = []
+    for name in [p.strip() for p in override.split(",")]:
+        if name and name not in parsed:
+            parsed.append(name)
+
+    if parsed:
+        print(f"[CONFIG] BOOKMAKER_ORDER override ({len(parsed)}): {', '.join(parsed)}")
+        return parsed
+
+    return DEFAULT_BOOKMAKER_ORDER
+
+
+BOOKMAKER_ORDER = parse_bookmaker_order()
 
 CSV_HEADERS = BASE_HEADERS + BOOKMAKER_ORDER
 
 # Mapping bookmaker keys to CSV column names
 BOOKMAKER_TO_COLUMN = {
+    # Sharp books
     "pinnacle": "Pinnacle",
     "betfair_ex_eu": "Betfair_EU",
+    "betfair_ex_uk": "Betfair_UK",
     "betfair_ex_au": "Betfair_AU",
     "betfair": "Betfair_EU",
     "draftkings": "Draftkings",
@@ -183,33 +229,56 @@ BOOKMAKER_TO_COLUMN = {
     "betmgm": "Betmgm",
     "betonlineag": "Betonline",
     "bovada": "Bovada",
-    "betus": "Betus",
     "lowvig": "Lowvig",
     "mybookieag": "Mybookie",
-    "marathonbet": "Marathonbet",
-    "matchbook": "Matchbook",
-    "sportsbet": "Sportsbet",
-    "bet365_au": "Bet365",
-    "bet365": "Bet365",
-    "pointsbetau": "Pointsbet",
-    "pointsbetus": "Pointsbet",
-    "betright": "Betright",
-    "tab": "Tab",
-    "dabble_au": "Dabble",
-    "unibet": "Unibet",
-    "ladbrokes_au": "Ladbrokes",
-    "playup": "Playup",
-    "tabtouch": "Tabtouch",
-    "betr_au": "Betr",
-    "neds": "Neds",
-    "boombet": "Boombet",
-    "caesars": "Caesars",
     "betrivers": "Betrivers",
-    "sugarhouse": "Sugarhouse",
-    "superbook": "Superbook",
-    "twinspires": "Twinspires",
-    "wynnbet": "Wynnbet",
-    "williamhill_us": "Williamhill",
+    "marathonbet": "Marathonbet",
+    "betsson": "Betsson",
+    "nordicbet": "Nordicbet",
+    # AU books
+    "sportsbet": "Sportsbet",
+    "pointsbetau": "Pointsbet",
+    "tab": "Tab",
+    "tabtouch": "Tabtouch",
+    "unibet": "Unibet_AU",
+    "unibet_au": "Unibet_AU",
+    "ladbrokes_au": "Ladbrokes_AU",
+    "neds": "Neds",
+    "betr_au": "Betr",
+    "boombet": "Boombet",
+    # US books
+    "williamhill_us": "Williamhill_US",
+    "sbk": "Sbk",
+    "fanatics": "Fanatics",
+    "ballybet": "Ballybet",
+    "betparx": "Betparx",
+    "espnbet": "Espnbet",
+    "fliff": "Fliff",
+    "hardrockbet": "Hardrockbet",
+    "rebet": "Rebet",
+    # UK books
+    "williamhill": "Williamhill_UK",
+    "williamhill_uk": "Williamhill_UK",
+    "betvictor": "Betvictor",
+    "bwin": "Bwin",
+    "coral": "Coral",
+    "skybet": "Skybet",
+    "paddypower": "Paddypower",
+    "boylesports": "Boylesports",
+    "betfred": "Betfred",
+    # EU books
+    "williamhill_eu": "Williamhill_EU",
+    "codere_it": "Codere",
+    "tipico_de": "Tipico",
+    "leovegas_se": "Leovegas",
+    "leovegas": "Leovegas",
+    "parionssport_fr": "Parionssport",
+    "winamax_fr": "Winamax_FR",
+    "winamax_de": "Winamax_DE",
+    "unibet_fr": "Unibet_FR",
+    "unibet_nl": "Unibet_NL",
+    "unibet_se": "Unibet_SE",
+    "betclic_fr": "Betclic",
 }
 
 

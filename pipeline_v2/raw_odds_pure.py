@@ -32,7 +32,9 @@ RAW_CSV = DATA_DIR / "raw_odds_pure.csv"
 # API Configuration
 ODDS_API_HOST = "https://api.the-odds-api.com"
 SPORTS = ["basketball_nba", "americanfootball_nfl", "icehockey_nhl"]  # Can add more
-REGIONS = "au,us"  # AU + US only (saves 50% vs 4 regions)
+# Include EU to ensure Pinnacle is returned by The Odds API
+# Cost note: adding EU increases credits vs au,us only
+REGIONS = os.getenv("REGIONS", "au,us,eu")
 ODDS_FORMAT = "decimal"  # Always decimal for calculations
 
 # Time filtering for events

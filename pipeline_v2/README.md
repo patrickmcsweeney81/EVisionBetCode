@@ -29,7 +29,7 @@ python pipeline_v2/raw_odds_pure.py
 - Fetches NBA & NFL odds from Odds API v4
 - Core markets: h2h, spreads, totals (all events)
 - Player props: 14 NBA props + 19 NFL props (time-filtered: 5min-48hrs)
-- Regions: AU + US only (cost optimization)
+- Regions: AU + US + EU (EU added to include Pinnacle)
 - 2-way market filter (Over/Under pairs only)
 
 **Cost:** ~190 credits per run (7 NBA + 13 NFL events typical)
@@ -65,7 +65,7 @@ Edit `.env` in project root:
 ```bash
 ODDS_API_KEY=your_key_here
 SPORTS=basketball_nba,americanfootball_nfl
-REGIONS=au,us                # AU + US only (50% cost savings)
+REGIONS=au,us,eu             # EU added to ensure Pinnacle odds
 ODDS_FORMAT=decimal
 ```
 
@@ -105,7 +105,7 @@ timestamp,sport,event_id,away_team,home_team,commence_time,market,point,selectio
 
 | Optimization | Savings | Status |
 |--------------|---------|--------|
-| AU + US regions only (vs 4 regions) | **-50%** | ✅ Done |
+| AU + US + EU regions (adds Pinnacle) | Costs higher than au,us | ➡️ Required for Pinnacle |
 | 2-way market filter (Over/Under pairs) | **-30%** | ✅ Done |
 | Time window filter (5min-48hrs) | **-20%** | ✅ Done |
 | **Total** | **~80%** | **✅** |
@@ -146,7 +146,7 @@ timestamp,sport,event_id,away_team,home_team,commence_time,market,point,selectio
 **US Books:**
 - Caesars, Betrivers, Williamhill, Ballybet, Betparx, Espnbet, Fanatics, Fliff, Hardrockbet
 
-**Total:** ~24 bookmakers (AU + US regions)
+**Total:** ~24 bookmakers (AU + US + EU regions; Pinnacle via EU)
 
 ---
 
@@ -196,7 +196,7 @@ python pipeline_v2/debug_props.py
 | Data format | Calculation-heavy | Raw odds only |
 | Recalculation | Requires API call | Use cached CSV |
 | Cost per run | ~1,036 credits | ~194 credits |
-| Regions | 4 (au,us,us2,eu) | 2 (au,us) |
+| Regions | 4 (au,us,us2,eu) | 3 (au,us,eu) |
 | Props filter | None | 2-way markets only |
 | Code size | 1,300 lines | 609 + 330 lines |
 | Status | ✅ Working | ⚠️ Stage 1 working, Stage 2 untested |

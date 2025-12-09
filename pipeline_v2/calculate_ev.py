@@ -15,6 +15,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 
+# Import bookmaker ratings & weighting
+from bookmaker_ratings import (
+    BOOKMAKER_RATINGS,
+    load_weight_config,
+    calculate_book_weight,
+    get_sharp_books_only,
+    get_target_books_only,
+)
+
 # Load environment
 load_dotenv()
 
@@ -53,39 +62,14 @@ META_COLS = {
     "selection",
 }
 
-# Treat these as sharp sources (must have BOTH sides to be used)
-# Expanded: All major sharp bookmakers across regions
-SHARP_COLS = [
-    "Pinnacle",
-    "Draftkings",
-    "Fanduel",
-    "Betmgm",
-    "Betonline",
-    "Bovada",
-    "Lowvig",
-    "Mybookie",
-    "Betrivers",
-    "Betfair_AU",
-    "Betfair_EU",
-    "Betfair_UK",
-    "Marathonbet",
-    "Betsson",
-    "Nordicbet",
-]
+# Load bookmaker weights from ratings system
+WEIGHT_CONFIG = load_weight_config()
+SHARP_WEIGHTS = get_sharp_books_only(WEIGHT_CONFIG)
+TARGET_BOOKS = get_target_books_only()
 
-# Limit EV targets to AU books present in this dataset
-AU_TARGET_BOOKS = {
-    "Sportsbet",
-    "Pointsbet",
-    "Tab",
-    "Tabtouch",
-    "Unibet_AU",
-    "Ladbrokes_AU",
-    "Neds",
-    "Betr",
-    "Boombet",
-    "Betfair_AU",  # include exchange if present
-}
+# For backwards compatibility
+SHARP_COLS = list(SHARP_WEIGHTS.keys())
+AU_TARGET_BOOKS = set(TARGET_BOOKS)  # Will include all 1⭐ books
 
 # Skip these markets (exchange-only, invalid for sharp pricing)
 EXCLUDE_MARKETS = {"spreads_lay", "totals_lay"}
@@ -239,28 +223,86 @@ def get_bookie_columns(rows: List[Dict]) -> List[str]:
     return [c for c in rows[0].keys() if c not in META_COLS]
 
 
-def fair_from_sharps(side_a: Dict, side_b: Dict, bookie_cols: List[str]) -> Tuple[float, float, int]:
-    """Compute fair odds from sharp books present on both sides.
-    Returns (fair_a, fair_b, sharp_count) where sharp_count indicates confidence.
-    Requires at least 2 different bookmakers with full coverage of both sides.
+def remove_outliers_relative(odds_list: List[float], tolerance: float = 0.05) -> List[float]:
+    """Remove odds >tolerance% away from median.
+    
+    Args:
+        odds_list: List of decimal odds
+        tolerance: Acceptable deviation (default 5%)
+    
+    Returns:
+        Filtered odds list
     """
-    sharp_pairs = []
-    for col in SHARP_COLS:
+    if len(odds_list) < 2:
+        return odds_list
+    
+    med = median(odds_list)
+    return [o for o in odds_list if abs(o - med) / med <= tolerance]
+
+
+def fair_from_sharps(side_a: Dict, side_b: Dict, bookie_cols: List[str]) -> Tuple[float, float, int]:
+    """Compute weighted fair odds from sharp books (with outlier removal).
+    
+    Process:
+    1. Collect devigged odds from sharp books (3⭐ and 4⭐)
+    2. Remove outliers (5% tolerance from median)
+    3. Calculate weighted average using SHARP_WEIGHTS
+    
+    Returns (fair_a, fair_b, sharp_count) where sharp_count = books used.
+    Requires at least MIN_BOOKMAKER_COVERAGE weight in result.
+    """
+    over_odds = []
+    under_odds = []
+    over_weighted = []
+    under_weighted = []
+    total_weight = 0.0
+    
+    for col, weight in SHARP_WEIGHTS.items():
         if col not in bookie_cols:
             continue
+        
         a = parse_float(side_a.get(col, "0"))
         b = parse_float(side_b.get(col, "0"))
-        if a > 1 and b > 1:
-            pa, pb = devig_two_way(a, b)
-            if pa > 0 and pb > 0:
-                sharp_pairs.append((1 / pa, 1 / pb))
-
-    if not sharp_pairs or len(sharp_pairs) < MIN_BOOKMAKER_COVERAGE:
+        
+        # Both sides required
+        if a <= 1 or b <= 1:
+            continue
+        
+        # Devig
+        pa, pb = devig_two_way(a, b)
+        if pa > 0 and pb > 0:
+            fair_a = 1 / pa
+            fair_b = 1 / pb
+            
+            over_odds.append(fair_a)
+            under_odds.append(fair_b)
+            over_weighted.append((fair_a, weight))
+            under_weighted.append((fair_b, weight))
+            total_weight += weight
+    
+    # Remove outliers before weighting
+    over_odds_clean = remove_outliers_relative(over_odds, tolerance=0.05)
+    under_odds_clean = remove_outliers_relative(under_odds, tolerance=0.05)
+    
+    # Recalculate weights for non-outlier books only
+    over_weighted = [(o, w) for o, w in over_weighted if o in over_odds_clean]
+    under_weighted = [(o, w) for o, w in under_weighted if o in under_odds_clean]
+    
+    # Calculate separate totals for each side
+    over_weight_total = sum(w for _, w in over_weighted)
+    under_weight_total = sum(w for _, w in under_weighted)
+    
+    # Need minimum weight coverage
+    if over_weight_total < 0.10 or under_weight_total < 0.10:
         return 0.0, 0.0, 0
-
-    fair_a = median([p[0] for p in sharp_pairs])
-    fair_b = median([p[1] for p in sharp_pairs])
-    return fair_a, fair_b, len(sharp_pairs)
+    
+    # Calculate weighted averages with individual weight totals
+    fair_a = sum(odds * weight for odds, weight in over_weighted) / over_weight_total
+    fair_b = sum(odds * weight for odds, weight in under_weighted) / under_weight_total
+    
+    sharp_count = len(over_weighted)  # Use over side count (should equal under count)
+    
+    return fair_a, fair_b, sharp_count
 
 
 def process_two_way_markets(grouped: Dict, bookie_cols: List[str], verbose: bool = False) -> List[Dict]:
@@ -276,8 +318,8 @@ def process_two_way_markets(grouped: Dict, bookie_cols: List[str], verbose: bool
         'found_ev': 0
     }
 
-    # Limit EV targets to AU books present in this dataset
-    target_books = [b for b in bookie_cols if b in AU_TARGET_BOOKS]
+    # Use target books (1⭐) present in this dataset
+    target_books = [b for b in bookie_cols if b in TARGET_BOOKS]
     
     if verbose:
         print(f"\n[EV DETAIL] Target AU bookmakers detected: {len(target_books)}")
@@ -471,7 +513,7 @@ def write_opportunities(opportunities: List[Dict], headers: List[str]):
 
 
 def main():
-    print("=== EV CALCULATOR (wide) ===\n")
+    print("=== EV CALCULATOR (weighted by bookmaker rating & sport) ===\n")
 
     raw_rows = read_raw_odds()
     if not raw_rows:
@@ -480,14 +522,51 @@ def main():
     bookie_cols = get_bookie_columns(raw_rows)
     print(f"[OK] Detected {len(bookie_cols)} bookmaker columns")
 
-    grouped = group_rows_wide(raw_rows)
-    print(f"[PROC] Grouped into {len(grouped)} market/line buckets")
+    # Detect sports in data
+    sports_in_data = set(row.get("sport", "unknown") for row in raw_rows)
+    print(f"[OK] Detected sports: {', '.join(sorted(sports_in_data))}")
 
-    opportunities = process_two_way_markets(grouped, bookie_cols, verbose=True)
-    print(f"[OK] Found {len(opportunities)} EV opportunities")
+    # Process each sport with its own weight profile
+    all_opportunities = []
+    
+    for sport in sorted(sports_in_data):
+        print(f"\n{'='*70}")
+        print(f"Processing: {sport}")
+        print(f"{'='*70}")
+        
+        # Load sport-specific weights
+        weights = load_weight_config(sport)
+        print(f"[CONFIG] Weight profile for {sport}:")
+        print(f"  4*: {weights[4]:.1%}  3*: {weights[3]:.1%}  2*: {weights[2]:.1%}  1*: {weights[1]:.1%}")
+        
+        # Update global weights for this sport
+        global SHARP_WEIGHTS, TARGET_BOOKS
+        SHARP_WEIGHTS = get_sharp_books_only(weights)
+        TARGET_BOOKS = get_target_books_only()
+        
+        # Filter rows for this sport
+        sport_rows = [r for r in raw_rows if r.get("sport") == sport]
+        
+        # Group and calculate EV
+        grouped = group_rows_wide(sport_rows)
+        print(f"[PROC] Grouped into {len(grouped)} market/line buckets")
 
-    headers = build_headers(bookie_cols)
-    write_opportunities(opportunities, headers)
+        opportunities = process_two_way_markets(grouped, bookie_cols, verbose=True)
+        print(f"[OK] Found {len(opportunities)} EV opportunities")
+        
+        all_opportunities.extend(opportunities)
+    
+    print(f"\n{'='*70}")
+    print(f"FINAL RESULTS")
+    print(f"{'='*70}")
+    print(f"Total opportunities across all sports: {len(all_opportunities)}")
+    
+    # Build headers from first opportunity
+    if all_opportunities:
+        headers = build_headers(bookie_cols)
+        write_opportunities(all_opportunities, headers)
+    else:
+        print("[!] No opportunities found")
 
     print("\n[DONE] Complete")
 

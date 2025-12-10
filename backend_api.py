@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import List, Optional
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, String, Float, DateTime, Integer, Text
+from sqlalchemy import create_engine, Column, String, Float, DateTime, Integer, Text, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
@@ -124,11 +124,10 @@ app.add_middleware(
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    session = SessionLocal()
     try:
-        # Try a simple query to verify DB connection
-        session = SessionLocal()
-        session.execute("SELECT 1")
-        session.close()
+        # Simple DB connectivity probe
+        session.execute(text("SELECT 1"))
         return {
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
@@ -141,6 +140,8 @@ async def health_check():
             "database": "disconnected",
             "error": str(e)
         }
+    finally:
+        session.close()
 
 # ============================================================================
 # EV HITS ENDPOINTS

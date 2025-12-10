@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "ev-arb-bot"
 version = "1.0.0"
 description = "EV (Expected Value) finder and analyzer for sports betting using The Odds API"
-readme = "README.txt"
+readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
@@ -49,9 +49,16 @@ all = ["ev-arb-bot[telegram,dev]"]
 
 [project.urls]
 Homepage = "https://github.com/patrickmcsweeney81/EV_ARB-Bot-VSCode"
-Documentation = "https://github.com/patrickmcsweeney81/EV_ARB-Bot-VSCode/blob/main/README.txt"
+Documentation = "https://github.com/patrickmcsweeney81/EV_ARB-Bot-VSCode/blob/main/README.md"
 Repository = "https://github.com/patrickmcsweeney81/EV_ARB-Bot-VSCode.git"
 "Bug Tracker" = "https://github.com/patrickmcsweeney81/EV_ARB-Bot-VSCode/issues"
+
+# Setuptools configuration for src/ layout
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 # pytest configuration
 [tool.pytest.ini_options]
@@ -94,7 +101,7 @@ extend-exclude = '''
 profile = "black"
 line_length = 100
 skip_gitignore = true
-known_first_party = ["core"]
+known_first_party = ["core", "pipeline_v2", "legacy"]
 known_third_party = ["requests", "dotenv"]
 
 # flake8 - Linter

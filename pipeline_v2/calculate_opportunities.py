@@ -11,8 +11,8 @@ from pathlib import Path
 from statistics import median
 from typing import Dict, List, Tuple
 from datetime import datetime
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, Column, String, Float, DateTime, Integer
+from sqlalchemy.orm import sessionmaker, declarative_base
 from dotenv import load_dotenv
 
 # Import bookmaker ratings & weighting
@@ -25,8 +25,32 @@ from ratings import (
 )
 
 # Database imports (conditional)
-OddsSnapshot = None
-Base = None
+Base = declarative_base()
+
+
+class EVOpportunity(Base):
+    __tablename__ = "ev_opportunities"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    detected_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    sport = Column(String(50), nullable=False)
+    event_id = Column(String(100), nullable=False)
+    away_team = Column(String(100))
+    home_team = Column(String(100))
+    commence_time = Column(DateTime)
+    market = Column(String(50), nullable=False)
+    point = Column(Float)
+    selection = Column(String(200), nullable=False)
+    player = Column(String(200))
+    fair_odds = Column(Float)
+    best_book = Column(String(50), nullable=False)
+    best_odds = Column(Float, nullable=False)
+    ev_percent = Column(Float, nullable=False)
+    sharp_book_count = Column(Integer)
+    implied_prob = Column(Float)
+    stake = Column(Float)
+    kelly_fraction = Column(Float, default=0.25)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 # Load environment
 load_dotenv()
@@ -43,6 +67,7 @@ if DATABASE_URL:
     try:
         engine = create_engine(DATABASE_URL, pool_pre_ping=True)
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        Base.metadata.create_all(engine)
     except Exception as e:
         print(f"⚠️  Database connection failed: {e}")
         print("   Continuing with CSV output only...")
@@ -503,28 +528,36 @@ def write_opportunities(opportunities: List[Dict], headers: List[str]):
             db = SessionLocal()
             try:
                 # Clear old records (optional - could keep history)
-                db.query(OddsSnapshot).delete()
+                db.query(EVOpportunity).delete()
                 
                 # Insert new records - data is already in correct format
                 for opp in opportunities:
-                    record = OddsSnapshot(
-                        timestamp=datetime.utcnow(),
+                    commence_ts = None
+                    if opp.get("commence_time"):
+                        try:
+                            commence_ts = datetime.fromisoformat(opp["commence_time"].replace("Z", "+00:00"))
+                        except Exception:
+                            commence_ts = None
+
+                    record = EVOpportunity(
+                        detected_at=datetime.utcnow(),
                         sport=opp.get("sport"),
                         event_id=opp.get("event_id"),
                         away_team=opp.get("away_team"),
                         home_team=opp.get("home_team"),
-                        commence_time=datetime.fromisoformat(opp["commence_time"].replace("Z", "+00:00")) if opp.get("commence_time") else None,
+                        commence_time=commence_ts,
                         market=opp.get("market"),
                         player=opp.get("player") if opp.get("player") else None,
-                        line=float(opp["point"]) if opp.get("point") else None,
+                        point=float(opp["line"]) if opp.get("line") else None,
                         selection=opp.get("selection"),
-                        bookmaker=opp.get("best_book"),
-                        odds_decimal=opp.get("odds_decimal"),
+                        best_book=opp.get("best_book"),
+                        best_odds=opp.get("odds_decimal"),
                         fair_odds=opp.get("fair_odds"),
                         ev_percent=opp.get("ev_percent"),
                         implied_prob=opp.get("implied_prob"),
                         sharp_book_count=int(opp.get("sharp_book_count", 0)),
-                        stake=opp.get("stake")
+                        stake=opp.get("stake"),
+                        kelly_fraction=KELLY_FRACTION,
                     )
                     db.add(record)
                 

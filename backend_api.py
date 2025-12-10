@@ -41,60 +41,80 @@ Base = declarative_base()
 class LiveOdds(Base):
     """Raw odds from all bookmakers"""
     __tablename__ = "live_odds"
-    
+
     id = Column(Integer, primary_key=True)
+    extracted_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     sport = Column(String, nullable=False)
     event_id = Column(String, nullable=False)
-    event_name = Column(String, nullable=False)
+    commence_time = Column(DateTime)
     market = Column(String, nullable=False)
+    point = Column(Float)
     selection = Column(String, nullable=False)
     bookmaker = Column(String, nullable=False)
     odds = Column(Float, nullable=False)
-    extracted_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
     def to_dict(self):
         return {
             "sport": self.sport,
             "event_id": self.event_id,
-            "event_name": self.event_name,
+            "commence_time": self.commence_time.isoformat() if self.commence_time else None,
             "market": self.market,
+            "point": self.point,
             "selection": self.selection,
             "bookmaker": self.bookmaker,
             "odds": self.odds,
             "extracted_at": self.extracted_at.isoformat() if self.extracted_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
 
 class EVOpportunity(Base):
     """EV opportunities above threshold"""
     __tablename__ = "ev_opportunities"
-    
+
     id = Column(Integer, primary_key=True)
+    detected_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     sport = Column(String, nullable=False)
     event_id = Column(String, nullable=False)
-    event_name = Column(String, nullable=False)
+    away_team = Column(String)
+    home_team = Column(String)
+    commence_time = Column(DateTime)
     market = Column(String, nullable=False)
+    point = Column(Float)
     selection = Column(String, nullable=False)
-    fair_odds = Column(Float, nullable=False)
-    best_odds = Column(Float, nullable=False)
+    player = Column(String)
+    fair_odds = Column(Float)
     best_book = Column(String, nullable=False)
-    ev_percent = Column(Float, nullable=False)
+    best_odds = Column(Float, nullable=False)
+    ev_percent = Column(Float, nullable=False)  # stored as percent (e.g., 5.0 for 5%)
     sharp_book_count = Column(Integer, default=0)
-    extracted_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    
+    implied_prob = Column(Float)
+    stake = Column(Float)
+    kelly_fraction = Column(Float)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
     def to_dict(self):
         return {
             "sport": self.sport,
             "event_id": self.event_id,
-            "event_name": self.event_name,
+            "away_team": self.away_team,
+            "home_team": self.home_team,
+            "commence_time": self.commence_time.isoformat() if self.commence_time else None,
             "market": self.market,
+            "point": self.point,
             "selection": self.selection,
-            "fair_odds": round(self.fair_odds, 2),
-            "best_odds": round(self.best_odds, 2),
+            "player": self.player,
+            "fair_odds": round(self.fair_odds, 2) if self.fair_odds else None,
+            "best_odds": round(self.best_odds, 2) if self.best_odds else None,
             "best_book": self.best_book,
-            "ev_percent": round(self.ev_percent * 100, 2),
+            "ev_percent": round(self.ev_percent, 2),
             "sharp_book_count": self.sharp_book_count,
-            "extracted_at": self.extracted_at.isoformat() if self.extracted_at else None,
+            "implied_prob": round(self.implied_prob, 2) if self.implied_prob else None,
+            "stake": round(self.stake, 2) if self.stake else None,
+            "kelly_fraction": self.kelly_fraction,
+            "detected_at": self.detected_at.isoformat() if self.detected_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -186,7 +206,7 @@ async def get_ev_hits(
         
         last_updated = None
         if hits:
-            last_updated = max(h.extracted_at for h in hits).isoformat()
+            last_updated = max((h.detected_at or h.created_at) for h in hits).isoformat()
         
         session.close()
         
@@ -239,10 +259,10 @@ async def get_ev_summary():
             sports_dict[hit.sport] += 1
             
             # Track highest EV
-            if hit.ev_percent * 100 > top_ev:
-                top_ev = hit.ev_percent * 100
-        
-        last_updated = max(h.extracted_at for h in all_hits).isoformat()
+            if hit.ev_percent > top_ev:
+                top_ev = hit.ev_percent
+
+        last_updated = max((h.detected_at or h.created_at) for h in all_hits).isoformat()
         
         session.close()
         

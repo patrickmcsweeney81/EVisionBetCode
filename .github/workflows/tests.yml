@@ -36,9 +36,9 @@ jobs:
         continue-on-error: true
         run: |
           # Stop the build if there are Python syntax errors or undefined names
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 core pipeline_v2 --count --select=E9,F63,F7,F82 --show-source --statistics
           # Exit-code is non-zero if there are style issues
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
+          flake8 core pipeline_v2 --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
       
       - name: Type check with mypy
         continue-on-error: true
@@ -82,13 +82,13 @@ jobs:
       
       - name: Lint with pylint
         continue-on-error: true
-        run: pylint --rcfile=.pylintrc core/ ev_arb_bot.py
+        run: pylint --rcfile=.pylintrc core/ pipeline_v2/
       
       - name: Check for security issues with bandit
         continue-on-error: true
         run: |
           pip install bandit
-          bandit -r core/ ev_arb_bot.py -f json -o bandit-report.json || true
+          bandit -r core/ pipeline_v2/ -f json -o bandit-report.json || true
 
   docs:
     name: Documentation Check

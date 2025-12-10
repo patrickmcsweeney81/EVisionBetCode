@@ -26,7 +26,51 @@ from dotenv import load_dotenv
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 API_KEY = os.getenv("ODDS_API_KEY", "")
-DATA_DIR = Path(__file__).parent.parent / "data"
+
+# File locations - use absolute paths for reliability
+# Try multiple locations to support both local and Render deployments
+def get_data_dir():
+    """Find data directory - supports local and Render deployments"""
+    # Option 1: Relative to script location (most common)
+    script_parent = Path(__file__).parent.parent
+    data_path = script_parent / "data"
+    if not data_path.exists():
+        try:
+            data_path.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+    if data_path.exists():
+        return data_path
+    
+    # Option 2: Current working directory (Render cron jobs)
+    cwd = Path.cwd()
+    data_path = cwd / "data"
+    if not data_path.exists():
+        try:
+            data_path.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+    if data_path.exists():
+        return data_path
+    
+    # Option 3: Check if we're in /src subdirectory
+    if "src" in str(cwd):
+        parent = cwd.parent
+        data_path = parent / "data"
+        if not data_path.exists():
+            try:
+                data_path.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+        if data_path.exists():
+            return data_path
+    
+    # Default fallback
+    data_path = script_parent / "data"
+    data_path.mkdir(parents=True, exist_ok=True)
+    return data_path
+
+DATA_DIR = get_data_dir()
 RAW_CSV = DATA_DIR / "raw_odds_pure.csv"
 
 # API Configuration
@@ -609,11 +653,20 @@ def append_to_csv(rows: List[Dict]):
 
 def main():
     """Main extraction flow."""
+    
+    # Debug output
+    print(f"[DEBUG] Script location: {Path(__file__).resolve()}")
+    print(f"[DEBUG] Working directory: {Path.cwd()}")
+    print(f"[DEBUG] Data directory: {DATA_DIR}")
+    print(f"[DEBUG] Raw CSV path: {RAW_CSV}")
+    print()
+    
     if not API_KEY:
         print("[!] ODDS_API_KEY not set in .env")
         sys.exit(1)
     
     DATA_DIR.mkdir(exist_ok=True)
+    print(f"[OK] Data directory ready: {DATA_DIR}")
     
     timestamp = datetime.now(timezone.utc).isoformat()
     all_rows = []

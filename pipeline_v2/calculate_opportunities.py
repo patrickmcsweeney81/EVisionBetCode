@@ -52,12 +52,36 @@ class EVOpportunity(Base):
     kelly_fraction = Column(Float, default=0.25)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# Load environment
-load_dotenv()
+# Load environment - look for .env in parent directory
+env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
-# File locations
-RAW_CSV = Path(__file__).parent.parent / "data" / "raw_odds_pure.csv"
-EV_CSV = Path(__file__).parent.parent / "data" / "ev_opportunities.csv"
+# File locations - use absolute paths for reliability
+# Try multiple locations to support both local and Render deployments
+def get_data_dir():
+    """Find data directory - supports local and Render deployments"""
+    # Option 1: Relative to script location (most common)
+    script_parent = Path(__file__).parent.parent
+    if (script_parent / "data").exists():
+        return script_parent / "data"
+    
+    # Option 2: Current working directory (Render cron jobs)
+    cwd = Path.cwd()
+    if (cwd / "data").exists():
+        return cwd / "data"
+    
+    # Option 3: Check if we're in /src subdirectory
+    if "src" in str(cwd):
+        parent = cwd.parent
+        if (parent / "data").exists():
+            return parent / "data"
+    
+    # Default fallback
+    return script_parent / "data"
+
+DATA_DIR = get_data_dir()
+RAW_CSV = DATA_DIR / "raw_odds_pure.csv"
+EV_CSV = DATA_DIR / "ev_opportunities.csv"
 
 # Database connection (optional - only if DATABASE_URL is set)
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -166,8 +190,19 @@ def kelly_stake(bankroll: float, fair_odds: float, bet_odds: float, kelly_frac: 
 
 def read_raw_odds() -> List[Dict]:
     """Read raw odds CSV."""
+    # Ensure data directory exists
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    
     if not RAW_CSV.exists():
         print(f"[!] {RAW_CSV} not found")
+        print(f"[!] Looking in: {DATA_DIR}")
+        print(f"[!] Data directory exists: {DATA_DIR.exists()}")
+        print(f"[!] Contents of {DATA_DIR}:")
+        try:
+            for item in DATA_DIR.iterdir():
+                print(f"    - {item.name}")
+        except Exception as e:
+            print(f"    (error listing: {e})")
         return []
 
     rows = []
@@ -574,6 +609,15 @@ def write_opportunities(opportunities: List[Dict], headers: List[str]):
 
 def main():
     print("=== EV CALCULATOR (weighted by bookmaker rating & sport) ===\n")
+    
+    # Debug: Show file paths
+    print(f"[DEBUG] Script location: {Path(__file__).resolve()}")
+    print(f"[DEBUG] Working directory: {Path.cwd()}")
+    print(f"[DEBUG] Data directory: {DATA_DIR}")
+    print(f"[DEBUG] Raw CSV path: {RAW_CSV}")
+    print(f"[DEBUG] Data dir exists: {DATA_DIR.exists()}")
+    print(f"[DEBUG] Raw CSV exists: {RAW_CSV.exists()}")
+    print()
 
     raw_rows = read_raw_odds()
     if not raw_rows:

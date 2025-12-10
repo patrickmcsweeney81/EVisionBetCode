@@ -52,8 +52,9 @@ launcher.bat
 **File Structure:**
 ```
 pipeline_v2/
-├── raw_odds_pure.py         Stage 1: Fetch and extract raw odds
-├── calculate_ev.py           Stage 2: Compute EV from raw data
+├── extract_odds.py           Stage 1: Fetch and extract raw odds
+├── calculate_opportunities.py Stage 2: Compute EV from raw data
+├── ratings.py                Bookmaker ratings and weighting
 └── README.md                 Detailed pipeline documentation
 ```
 
@@ -61,9 +62,9 @@ pipeline_v2/
 ```
 The Odds API
     ↓
-[raw_odds_pure.py] → raw_odds_pure.csv
+[extract_odds.py] → raw_odds_pure.csv
     ↓
-[calculate_ev.py] → ev_opportunities.csv
+[calculate_opportunities.py] → ev_opportunities.csv
 ```
 
 **Current Results (as of Dec 9, 2025):**
@@ -157,7 +158,7 @@ This ensures each player's prop is evaluated independently with their own fair o
 ### Inputs
 - **raw_odds_pure.csv** - All odds across all sports/markets/bookmakers
   - One row per market/selection with all bookmaker odds in columns
-  - Used by calculate_ev.py
+  - Used by calculate_opportunities.py
 
 ### Outputs
 - **ev_opportunities.csv** - EV opportunities above threshold
@@ -229,12 +230,12 @@ The following temporary/debug files have been removed:
 
 ### Adding New Sports
 1. Update `SPORTS` in `.env`
-2. Define prop markets in `raw_odds_pure.py` (e.g., `NCAAF_PROPS`)
+2. Define prop markets in `extract_odds.py` (e.g., `NCAAF_PROPS`)
 3. Update `get_props_for_sport()` function
 4. Pipeline automatically handles the rest
 
 ### Modifying Fair Price Calculation
-Edit `calculate_ev.py`:
+Edit `calculate_opportunities.py`:
 - `SHARP_COLS` - List of sharp bookmakers
 - `fair_from_sharps()` - Fair odds logic
 - Commission adjustments in Betfair handling

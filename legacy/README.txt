@@ -1,6 +1,6 @@
 # EV Bot – Sports Betting Expected Value Finder
 
-This is the legacy EV detection system. **For new projects, use the EV_Finder folder for a modern, clean architecture with FastAPI and web dashboard.**
+This is the legacy EV detection system. **For new projects, use the EVisionBetSite folder for a modern, clean architecture with FastAPI and web dashboard.**
 
 This bot scans sports betting odds from multiple bookmakers using The Odds API and identifies expected value (EV) opportunities. Arbitrage logic was removed; focus is EV-only.
 

@@ -16,10 +16,10 @@
 **Quick Start:**
 ```bash
 # Stage 1: Extract raw odds (costs ~194 credits)
-python pipeline_v2/raw_odds_pure.py
+python pipeline_v2/extract_odds.py
 
 # Stage 2: Calculate EV (no API calls, instant)
-python pipeline_v2/calculate_ev.py
+python pipeline_v2/calculate_opportunities.py
 
 # Output: data/ev_opportunities.csv
 ```
@@ -73,18 +73,19 @@ launcher.bat
 ## Directory Structure
 
 ```
-EV_ARB Bot VSCode/
+EVisionBetCode/
 │
 ├── pipeline_v2/               🆕 NEW: Two-stage system
-│   ├── raw_odds_pure.py           Stage 1: Extract raw odds
-│   ├── calculate_ev.py            Stage 2: Calculate EV
+│   ├── extract_odds.py            Stage 1: Extract raw odds
+│   ├── calculate_opportunities.py Stage 2: Calculate EV
+│   ├── ratings.py                 Bookmaker ratings
 │   └── README.md                  Full documentation
 │
 ├── ev_arb_bot.py              Legacy: All-in-one bot
 ├── launcher.bat               Legacy: Quick launcher
 │
 ├── data/                      💾 Shared data files
-│   ├── raw_odds_pure.csv          Raw odds (Pipeline V2)
+│   ├── raw_odds_pure.csv          Raw odds from extract_odds.py
 │   ├── ev_opportunities.csv       EV hits (Pipeline V2)
 │   ├── seen_hits.json             Deduplication (Legacy)
 │   └── api_usage.json             API quota tracking
@@ -133,10 +134,10 @@ KELLY_FRACTION=0.25
 2. Extracts h2h, spreads, totals for all sports
 3. Extracts player props (NBA/NFL only)
 4. Expands to wide CSV format (one row per market/selection)
-5. Output: `raw_odds_pure.csv` with 25+ bookmaker columns
+5. Output: `raw_odds_pure.csv` with 25+ bookmaker columns (wide format)
 
 ### Stage 2: EV Calculation
-1. Reads `raw_odds_pure.csv`
+1. Reads `raw_odds_pure.csv` from stage 1
 2. Groups by market/line/player (5-tuple key)
 3. Calculates fair odds from 12 sharp bookmakers
 4. Computes EV% for each outcome
@@ -195,12 +196,12 @@ Donte DiVincenzo Under 3.5 assists @ Dabble 2.1
 1. Check `.env` has valid `ODDS_API_KEY`
 2. Verify `EV_MIN_EDGE` (default 1%)
 3. Run with verbose output to see details
-4. Check `raw_odds_pure.csv` was created with data
+4. Check `raw_odds_pure.csv` was created with data from extract_odds.py
 
 ### "422 Error on props"
 - Some bookmakers don't support certain prop markets
 - Pipeline skips affected markets gracefully
-- Check `raw_odds_pure.csv` for affected sports
+- Check `raw_odds_pure.csv` output from extract_odds.py for affected sports
 
 ### "Not enough sharp books"
 - Market excluded if <2 sharp sources available
@@ -225,7 +226,7 @@ Donte DiVincenzo Under 3.5 assists @ Dabble 2.1
 ## Next Steps
 
 1. **Configure `.env`** with your Odds API key
-2. **Run Stage 1:** `python pipeline_v2/raw_odds_pure.py`
+2. **Run Stage 1:** `python pipeline_v2/extract_odds.py`
 3. **Run Stage 2:** `python pipeline_v2/calculate_ev.py`
 4. **Review:** `data/ev_opportunities.csv`
 5. **Place bets** on opportunities with positive EV!

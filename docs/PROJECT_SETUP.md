@@ -10,7 +10,7 @@
 ## Project Structure
 
 ```
-c:\EV_ARB Bot VSCode\
+c:\EVisionBetCode\
 ├── ev_arb_bot.py          # Main bot (run this)
 ├── launcher.bat           # Quick launcher
 ├── .env                   # Your configuration

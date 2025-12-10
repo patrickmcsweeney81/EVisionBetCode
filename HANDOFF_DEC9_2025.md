@@ -3,14 +3,14 @@
 ## Current Project State
 
 ### Three Separate Repos (Multi-Root Workspace Setup)
-1. **`C:\EV_ARB Bot VSCode`** (Pipeline & Backend)
+1. **`C:\EVisionBetCode`** (Pipeline & Backend)
    - Core EV detection system; two-stage odds extraction + calculation
-   - Python venv: `.venv-1`
+   - Python venv: `.venv`
    - Key files: `pipeline_v2/raw_odds_pure.py`, `pipeline_v2/calculate_ev.py`
    - Data outputs: `data/raw_odds_pure.csv` (760 rows), `data/ev_opportunities.csv` (EV hits)
    - Sports: NBA (834 rows props), NFL (306 rows props), NHL (69 rows core)
 
-2. **`C:\EV_Finder`** (Web UI & API)
+2. **`C:\EVisionBetSite`** (Web UI & API)
    - Front-end + API experiments
    - Status: scaffold exists; needs wiring to pipeline data
    - Next: build FastAPI endpoint reading CSV from pipeline folder
@@ -20,13 +20,13 @@
    - Reference only for this phase
 
 ### Multi-Root VS Code Workspace
-- **File:** `C:\EVision Project VSCode\project.code-workspace`
+- **File:** `C:\EVisionBetCode\project.code-workspace`
 - **Setup:** Open with `File > Open Workspace from File…`
 - **Folders visible:** Pipeline & Backend | Web UI & API | Deployment & Docs
 - **Excludes:** data/, .venv*, node_modules/, __pycache__, .pytest_cache (for speed)
 
 ### Documentation Status
-- `README.md` (EV_ARB Bot VSCode) – Updated; quick start included
+- `README.md` (EVisionBetCode) – Updated; quick start included
 - `docs/PROJECT_ANALYSIS_DEC2025.md` – Strategic roadmap (CSV pivot + web dashboard)
 - `docs/TWO_STAGE_PIPELINE.md` – Architecture of extraction → EV calculation
 - `docs/RAW_ODDS_EXTRACTION.md` – Raw odds CSV structure
@@ -183,7 +183,7 @@ CREATE TABLE postgame_odds (
 
 ## Key Configuration Files
 
-### `.env` (EV_ARB Bot VSCode)
+### `.env` (EVisionBetCode)
 ```bash
 ODDS_API_KEY=your_key
 SPORTS=basketball_nba,americanfootball_nfl,icehockey_nhl
@@ -193,15 +193,15 @@ BETFAIR_COMMISSION=0.06
 ```
 
 ### Python Environments
-- **Pipeline:** `.venv-1` in `C:\EV_ARB Bot VSCode`
-- **API (if new):** Create `.venv` in `C:\EV_Finder` and install FastAPI, pandas, etc.
+- **Pipeline:** `.venv` in `C:\EVisionBetCode`
+- **API (if new):** Create `.venv` in `C:\EVisionBetSite` and install FastAPI, pandas, etc.
 - **Activation:** `& ".\.venv\Scripts\Activate.ps1"` (PowerShell) or `.\.venv\Scripts\activate` (CMD)
 
 ---
 
 ## Common Commands
 
-### Pipeline (from `C:\EV_ARB Bot VSCode`)
+### Pipeline (from `C:\EVisionBetCode`)
 ```powershell
 # Activate venv
 & ".\.venv-1\Scripts\Activate.ps1"
@@ -216,7 +216,7 @@ python pipeline_v2/calculate_ev.py
 type data/ev_opportunities.csv | head -5
 ```
 
-### API (from `C:\EV_Finder`, once set up)
+### API (from `C:\EVisionBetSite`, once set up)
 ```powershell
 # Activate venv
 & ".\.venv\Scripts\Activate.ps1"
@@ -286,18 +286,18 @@ Kelly stake = bankroll × kelly_fraction × edge / (odds - 1)
 
 ## Next Chat Checklist
 
-- [ ] Open `C:\EVision Project VSCode\project.code-workspace` in VS Code.
+- [ ] Open `C:\EVisionBetCode\project.code-workspace` in VS Code.
 - [ ] Activate `.venv-1` in Pipeline folder.
 - [ ] Run `python pipeline_v2/raw_odds_pure.py` to verify pipeline works.
 - [ ] Check `data/ev_opportunities.csv` row count (should have several hundred).
-- [ ] Start building FastAPI in `EV_Finder` (or ask for skeleton).
+- [ ] Start building FastAPI in `EVisionBetSite` (or ask for skeleton).
 - [ ] Wire front-end to API endpoint.
 
 ---
 
 ## Questions to Ask Next Chat
 
-1. Should I scaffold a FastAPI app in `EV_Finder`, or use an existing one?
+1. Should I scaffold a FastAPI app in `EVisionBetSite`, or use an existing one?
 2. Do you want SQLite now or keep CSV for MVP?
 3. What's the priority: filters/UX or auth/scheduling?
 4. Any specific design preferences for the web UI (Tailwind, Material-UI, etc.)?

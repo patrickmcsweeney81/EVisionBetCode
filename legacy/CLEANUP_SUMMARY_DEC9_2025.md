@@ -55,7 +55,7 @@ The following temporary/debug files have been deleted:
 ## Directory Structure (Clean)
 
 ```
-EV_ARB Bot VSCode/
+EVisionBetCode/
 │
 ├── pipeline_v2/               Two-stage EV system
 │   ├── raw_odds_pure.py       Stage 1: Extract odds

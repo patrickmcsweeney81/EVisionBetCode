@@ -4,8 +4,8 @@
 
 This is a **complete rewrite** of the odds extraction system with a clean two-stage architecture:
 
-1. **Stage 1:** `raw_odds_pure.py` - Pure data extraction (no calculations)
-2. **Stage 2:** `calculate_ev.py` - EV calculations from raw CSV (not yet tested)
+1. **Stage 1:** `extract_odds.py` - Pure data extraction (no calculations)
+2. **Stage 2:** `calculate_opportunities.py` - EV calculations from raw CSV
 
 **Key difference from legacy `ev_arb_bot.py`:**
 - Separates data fetching from calculations
@@ -20,7 +20,7 @@ This is a **complete rewrite** of the odds extraction system with a clean two-st
 ### 1. Extract Raw Odds
 
 ```bash
-python pipeline_v2/raw_odds_pure.py
+python pipeline_v2/extract_odds.py
 ```
 
 **Output:** `data/raw_odds_pure.csv`
@@ -34,13 +34,11 @@ python pipeline_v2/raw_odds_pure.py
 
 **Cost:** ~190 credits per run (7 NBA + 13 NFL events typical)
 
-### 2. Calculate EV (Not Yet Tested)
+### 2. Calculate EV
 
 ```bash
-python pipeline_v2/calculate_ev.py
+python pipeline_v2/calculate_opportunities.py
 ```
-
-**Status:** ⚠️ Skeleton exists but needs testing/debugging
 
 ---
 
@@ -48,12 +46,10 @@ python pipeline_v2/calculate_ev.py
 
 ```
 pipeline_v2/
-├── raw_odds_pure.py          Main extraction script (609 lines)
-├── calculate_ev.py           EV calculator (330 lines, untested)
-├── debug_props.py            Debug tool for prop market structure
-├── sample_raw.py             Quick CSV inspector
-├── test_api_simple.py        API connectivity test
-└── README.md                 This file
+├── extract_odds.py            Main extraction script
+├── calculate_opportunities.py  EV calculator
+├── ratings.py                 Bookmaker ratings & weights
+└── README.md                  This file
 ```
 
 ---

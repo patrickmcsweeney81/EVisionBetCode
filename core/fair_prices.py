@@ -1,256 +1,255 @@
 """
-Unified fair price calculation module.
+Fair Prices Module - Unified interface for fair odds calculation.
 
-SINGLE SOURCE OF TRUTH (v2): `core/book_weights.py`
-- Uses 0–4 integer weights per bookmaker, sport, and market_type.
-- Fair odds derived via weighted median of devigged sharp odds.
-- All active handlers (H2H, spreads, totals, props) use v2 functions.
-
-LEGACY (deprecated - pending removal): Percentage-based functions retained temporarily:
-  - master_fair_odds() - for old tests/scripts
-  - build_fair_prices_simple() - for backward compatibility
-These will be removed after validation window. All new code uses:
-  - build_fair_price_from_books()
-  - build_fair_prices_two_way()
-
-AU bookmakers are NEVER included in fair price construction; they are only EV targets.
+This module provides the build_fair_prices_two_way() function used by all handlers
+for calculating fair odds from sharp bookmakers using the book_weights system.
 """
-from typing import Dict, Optional, List
+
+from typing import Dict, List, Optional, Tuple
 from statistics import median
 from .utils import devig_two_way
-from .config import SHARP_BOOKIES, WEIGHT_PINNACLE, WEIGHT_BETFAIR, WEIGHT_OTHER_SHARPS  # legacy defaults (deprecated)
-
-# NEW: Import book_weights system for v2.0 fair price calculation
-try:
-    from .utils import weighted_median, get_sharp_books_by_weight
-    from .book_weights import get_book_weight
-    BOOK_WEIGHTS_AVAILABLE = True
-except ImportError:
-    BOOK_WEIGHTS_AVAILABLE = False
+from .book_weights import get_sharp_books_only, BOOKMAKER_RATINGS
 
 
-def build_fair_price_from_books(
-    bookmaker_odds: Dict[str, float],
-    market_type: str = "main",
-    sport: Optional[str] = None,
-    min_weight: int = 3
-) -> float:
-    """
-    NEW (v2.0): Calculate fair odds using book_weights system (0-4 scale).
-    
-    Args:
-        bookmaker_odds: Dict of {book_key: odds} (already devigged if 2-way)
-        market_type: "main" (h2h/spreads/totals) or "props"
-        sport: Optional sport code for overrides (e.g., "NBA", "NFL", "MMA")
-        min_weight: Minimum weight to include (default 3 = strong sharps only)
-    
-    Returns:
-        Fair odds using weighted median, or 0.0 if insufficient sharp data
-    """
-    if not BOOK_WEIGHTS_AVAILABLE or not bookmaker_odds:
-        return 0.0
-    
-    # Get sharp books with their weights
-    sharp_books = get_sharp_books_by_weight(bookmaker_odds, market_type, sport, min_weight)
-    
-    if not sharp_books:
-        return 0.0
-    
-    # Require at least 2 sharp books (weight >= 3)
-    if len(sharp_books) < 2:
-        return 0.0
-
-    # If only Betfair is present, skip (do not use Betfair-only fair prices)
-    if len(sharp_books) == 1:
-        book_key = sharp_books[0][0]
-        if book_key.startswith("betfair_ex_"):
-            return 0.0
-
-    # If exactly 2 sharp books and both are Betfair (e.g., AU and EU), skip
-    if len(sharp_books) == 2:
-        book_keys = [bk[0] for bk in sharp_books]
-        if all(k.startswith("betfair_ex_") for k in book_keys):
-            return 0.0
-
-    # Use weighted median (prioritizes weight 4/3 books)
-    values_with_weights = [(odds, weight) for _, odds, weight in sharp_books]
-    return weighted_median(values_with_weights)
+# Re-export for backward compatibility
+SHARP_BOOKIES = list(get_sharp_books_only())
 
 
 def build_fair_prices_two_way(
-    bookmaker_odds_a: Dict[str, float],
-    bookmaker_odds_b: Dict[str, float],
-    market_type: str = "main",
-    sport: Optional[str] = None
-) -> Dict[str, float]:
+    event_bookmakers: List[Dict],
+    market_name: str,
+    sport: Optional[str] = None,
+    betfair_commission: float = 0.06,
+) -> Tuple[Optional[float], Optional[float], int]:
     """
-    NEW (v2.0): Calculate fair prices for 2-way market using book_weights system.
+    Calculate fair odds from sharp bookmakers for a two-way market (Over/Under, Home/Away, etc).
+    
+    Uses the book_weights system to dynamically select and weight sharp bookmakers.
     
     Args:
-        bookmaker_odds_a: Dict of {book_key: odds} for outcome A (already devigged)
-        bookmaker_odds_b: Dict of {book_key: odds} for outcome B (already devigged)
-        market_type: "main" or "props"
+        event_bookmakers: List of bookmaker dicts from API with their markets/outcomes
+        market_name: Market type ('h2h', 'spreads', 'totals', etc)
+        sport: Optional sport code for weight overrides
+        betfair_commission: Betfair commission percentage (default 0.06)
+    
+    Returns:
+        Tuple of (fair_odds_side1, fair_odds_side2, num_sharps_used)
+        Returns (None, None, 0) if insufficient sharp data
+    """
+    
+    # Get list of sharp books to consider
+    sharp_books = get_sharp_books_only()
+    
+    if not sharp_books:
+        return None, None, 0
+    
+    # Extract odds from each sharp bookmaker for this market
+    sharp_odds = []
+    
+    for bm in event_bookmakers:
+        bm_key = bm.get("key", "")
+        
+        if bm_key not in sharp_books:
+            continue
+        
+        # Find the relevant market in this bookmaker's offerings
+        market_odds = _extract_market_odds(bm, market_name, betfair_commission)
+        
+        if market_odds and len(market_odds) >= 2:
+            sharp_odds.append(market_odds)
+    
+    # Need at least 2 sharp sources
+    if len(sharp_odds) < 2:
+        return None, None, len(sharp_odds)
+    
+    # De-vig each sharp's odds and calculate weighted fair odds
+    devigged = []
+    for odds_pair in sharp_odds:
+        p1, p2 = devig_two_way(odds_pair[0], odds_pair[1])
+        if p1 > 0 and p2 > 0:
+            devigged.append((p1, p2))
+    
+    if not devigged:
+        return None, None, 0
+    
+    # Take median of devigged probabilities
+    side1_probs = [p1 for p1, p2 in devigged]
+    side2_probs = [p2 for p1, p2 in devigged]
+    
+    fair_p1 = median(side1_probs)
+    fair_p2 = median(side2_probs)
+    
+    # Convert back to odds (1/probability)
+    fair_odds_1 = 1.0 / fair_p1 if fair_p1 > 0 else None
+    fair_odds_2 = 1.0 / fair_p2 if fair_p2 > 0 else None
+    
+    return fair_odds_1, fair_odds_2, len(devigged)
+
+
+def build_fair_prices_simple(
+    event_bookmakers: List[Dict],
+    market_name: str,
+    sport: Optional[str] = None,
+) -> Optional[float]:
+    """
+    Calculate simple fair odds (one-way market like h2h single outcome).
+    Uses median of sharp bookmaker odds.
+    
+    Args:
+        event_bookmakers: List of bookmaker dicts from API
+        market_name: Market type
         sport: Optional sport code
     
     Returns:
-        {"A": fair_a, "B": fair_b} or empty dict if insufficient data
+        Fair odds as float, or None if insufficient data
     """
-    if not BOOK_WEIGHTS_AVAILABLE:
-        return {}
+    sharp_books = get_sharp_books_only()
     
-    fair_a = build_fair_price_from_books(bookmaker_odds_a, market_type, sport)
-    fair_b = build_fair_price_from_books(bookmaker_odds_b, market_type, sport)
+    if not sharp_books:
+        return None
     
-    if fair_a > 0 and fair_b > 0:
-        return {"A": fair_a, "B": fair_b}
+    sharp_odds = []
     
-    return {}
+    for bm in event_bookmakers:
+        bm_key = bm.get("key", "")
+        if bm_key not in sharp_books:
+            continue
+        
+        odds = _extract_single_outcome_odds(bm, market_name)
+        if odds:
+            sharp_odds.append(odds)
+    
+    # Need at least 2 sources
+    if len(sharp_odds) < 2:
+        return None
+    
+    return median(sharp_odds)
+
+
+def _extract_market_odds(
+    bookmaker_data: Dict,
+    market_name: str,
+    betfair_commission: float = 0.06,
+) -> Optional[Tuple[float, float]]:
+    """Extract two-way odds (e.g., Over/Under, Home/Away) from bookmaker data."""
+    
+    markets = bookmaker_data.get("markets", [])
+    bm_key = bookmaker_data.get("key", "")
+    
+    for market in markets:
+        if market.get("key") != market_name:
+            continue
+        
+        outcomes = market.get("outcomes", [])
+        
+        # Extract first two outcomes
+        odds_list = []
+        for outcome in outcomes:
+            price = outcome.get("price")
+            if price and price > 0:
+                # Adjust Betfair for commission
+                if bm_key in ["betfair_ex_au", "betfair_ex_uk"]:
+                    price = 1.0 + (price - 1.0) * (1.0 - betfair_commission)
+                odds_list.append(price)
+                
+                if len(odds_list) >= 2:
+                    return tuple(odds_list[:2])
+        
+        if len(odds_list) >= 2:
+            return tuple(odds_list[:2])
+    
+    return None
+
+
+def _extract_single_outcome_odds(
+    bookmaker_data: Dict,
+    market_name: str,
+) -> Optional[float]:
+    """Extract single outcome odds from bookmaker data."""
+    
+    markets = bookmaker_data.get("markets", [])
+    
+    for market in markets:
+        if market.get("key") != market_name:
+            continue
+        
+        outcomes = market.get("outcomes", [])
+        
+        if outcomes:
+            price = outcomes[0].get("price")
+            if price and price > 0:
+                return price
+    
+    return None
+
+
+# Legacy function names for backward compatibility
+def build_fair_prices_h2h(event_bookmakers: List[Dict], sport: Optional[str] = None):
+    """Legacy wrapper for h2h markets."""
+    return build_fair_prices_two_way(event_bookmakers, "h2h", sport)
+
+
+def build_fair_prices_spreads(event_bookmakers: List[Dict], sport: Optional[str] = None):
+    """Legacy wrapper for spread markets."""
+    return build_fair_prices_two_way(event_bookmakers, "spreads", sport)
+
+
+def build_fair_prices_totals(event_bookmakers: List[Dict], sport: Optional[str] = None):
+    """Legacy wrapper for totals markets."""
+    return build_fair_prices_two_way(event_bookmakers, "totals", sport)
 
 
 def master_fair_odds(
     pinnacle_odds: Optional[float],
     betfair_odds: Optional[float],
-    other_sharps_odds: List[float],
-    weight_pinnacle: float = WEIGHT_PINNACLE,
-    weight_betfair: float = WEIGHT_BETFAIR,
-    weight_sharps: float = WEIGHT_OTHER_SHARPS
+    other_sharps: List[float],
+    weight_pinnacle: float = 0.6,
+    weight_betfair: float = 0.25,
+    weight_sharps: float = 0.15,
+    betfair_commission: float = 0.06,
 ) -> float:
     """
-    DEPRECATED: Old percentage-based fair odds calculation.
-    Retained for compatibility with legacy handlers/tests.
-    Prefer build_fair_price_from_books() (v2 weighted median system).
+    Legacy master_fair_odds function.
+    Calculates weighted fair odds from sharp sources.
+    
+    Args:
+        pinnacle_odds: Pinnacle odds (weight 0.6)
+        betfair_odds: Betfair odds (weight 0.25)
+        other_sharps: List of other sharp odds (weight 0.15, median if 2+)
+        betfair_commission: Commission adjustment for Betfair
+    
+    Returns:
+        Fair odds as float, or 0.0 if no valid data
     """
+    from .fair_odds import _adjust_betfair
+    
     components = []
     
-    if pinnacle_odds and pinnacle_odds > 0:
+    # Add Pinnacle
+    if pinnacle_odds and pinnacle_odds > 1.0:
         components.append((pinnacle_odds, weight_pinnacle))
     
-    if betfair_odds and betfair_odds > 0:
-        components.append((betfair_odds, weight_betfair))
+    # Add Betfair (with commission)
+    if betfair_odds:
+        betfair_adj = _adjust_betfair(betfair_odds, betfair_commission)
+        if betfair_adj:
+            components.append((betfair_adj, weight_betfair))
     
-    # Calculate median of other sharps if we have at least 2
-    if other_sharps_odds and len(other_sharps_odds) >= 2:
-        valid_sharps = [o for o in other_sharps_odds if o > 0]
+    # Add other sharps (use median if 2+)
+    if other_sharps and len(other_sharps) >= 2:
+        valid_sharps = [o for o in other_sharps if o and o > 1.0]
         if valid_sharps:
-            median_odds = median(valid_sharps)
-            components.append((median_odds, weight_sharps))
+            components.append((median(valid_sharps), weight_sharps))
     
     if not components:
         return 0.0
     
-    # Normalize weights
-    w_sum = sum(w for _, w in components)
-    if w_sum <= 0:
-        # Fallback to simple average
-        probs = [1.0 / o for (o, _) in components if o > 0]
-        if not probs:
-            return 0.0
-        p_star = sum(probs) / len(probs)
-        return (1.0 / p_star) if p_star > 0 else 0.0
+    # Calculate weighted average
+    weight_sum = sum(w for _, w in components)
+    if weight_sum <= 0:
+        return 0.0
     
-    # Weighted probability average
-    p_star = 0.0
-    for odds_i, w_i in components:
-        if odds_i <= 0:
-            continue
-        p_i = 1.0 / odds_i
-        p_star += p_i * (w_i / w_sum)
+    prob_sum = sum((1.0 / odds) * (weight / weight_sum) for odds, weight in components)
     
-    return (1.0 / p_star) if p_star > 0 else 0.0
+    return (1.0 / prob_sum) if prob_sum > 0 else 0.0
 
-
-def build_fair_prices_simple(
-    pin_odds_a: Optional[float],
-    pin_odds_b: Optional[float],
-    bf_odds_a: Optional[float],
-    bf_odds_b: Optional[float],
-    other_sharps_a: Optional[List[float]] = None,
-    other_sharps_b: Optional[List[float]] = None,
-    weight_pinnacle: float = WEIGHT_PINNACLE,
-    weight_betfair: float = WEIGHT_BETFAIR,
-    weight_sharps: float = WEIGHT_OTHER_SHARPS
-) -> Dict[str, float]:
-    """
-    DEPRECATED: Old percentage-based 2-way fair price calculation.
-    Requires Pinnacle. Returns empty dict if missing.
-    Use build_fair_prices_two_way() for the unified v2 system.
-    
-    Args:
-        pin_odds_a: Pinnacle odds for outcome A (REQUIRED)
-        pin_odds_b: Pinnacle odds for outcome B (REQUIRED)
-        bf_odds_a: Betfair odds for outcome A (IGNORED - not used)
-        bf_odds_b: Betfair odds for outcome B (IGNORED - not used)
-        other_sharps_a: List of other sharp book odds for outcome A
-        other_sharps_b: List of other sharp book odds for outcome B
-        weight_pinnacle: Pinnacle weight (default 75%)
-        weight_betfair: Betfair weight (default 0% - not used)
-        weight_sharps: Other sharps weight (default 25%)
-    
-    Returns:
-        {"A": fair_a, "B": fair_b} or empty dict if no Pinnacle
-    """
-    # REQUIRE Pinnacle - no Pinnacle = no fair price
-    if not pin_odds_a or not pin_odds_b or pin_odds_a <= 0 or pin_odds_b <= 0:
-        return {}
-    
-    fair_a_components = {}
-    fair_b_components = {}
-    
-    # Pinnacle devig (REQUIRED)
-    p_a, p_b = devig_two_way(pin_odds_a, pin_odds_b)
-    if p_a > 0:
-        fair_a_components["pinnacle"] = 1.0 / p_a
-    if p_b > 0:
-        fair_b_components["pinnacle"] = 1.0 / p_b
-    
-    # Betfair - SKIP (not used per user request)
-    
-    # Other sharps - use median if we have at least 2
-    other_sharps_a = other_sharps_a or []
-    other_sharps_b = other_sharps_b or []
-    
-    if len(other_sharps_a) >= 2:
-        valid_a = [o for o in other_sharps_a if o > 0]
-        if valid_a:
-            fair_a_components["other_sharps"] = median(valid_a)
-    
-    if len(other_sharps_b) >= 2:
-        valid_b = [o for o in other_sharps_b if o > 0]
-        if valid_b:
-            fair_b_components["other_sharps"] = median(valid_b)
-    
-    # Combine components: Weighted average of ALREADY DEVIGGED fair odds
-    fair_a = 0.0
-    fair_b = 0.0
-    
-    pin_a = fair_a_components.get("pinnacle")
-    pin_b = fair_b_components.get("pinnacle")
-    sharps_a = fair_a_components.get("other_sharps")
-    sharps_b = fair_b_components.get("other_sharps")
-    
-    # Calculate fair_a: 75% Pinnacle + 25% other sharps median
-    components_a = []
-    if pin_a:
-        components_a.append((pin_a, weight_pinnacle))
-    if sharps_a:
-        components_a.append((sharps_a, weight_sharps))
-    
-    if components_a:
-        total_weight = sum(w for _, w in components_a)
-        fair_a = sum(odds * w for odds, w in components_a) / total_weight
-    
-    # Calculate fair_b: 75% Pinnacle + 25% other sharps median
-    components_b = []
-    if pin_b:
-        components_b.append((pin_b, weight_pinnacle))
-    if sharps_b:
-        components_b.append((sharps_b, weight_sharps))
-    
-    if components_b:
-        total_weight = sum(w for _, w in components_b)
-        fair_b = sum(odds * w for odds, w in components_b) / total_weight
-    
-    if fair_a > 0 and fair_b > 0:
-        return {"A": fair_a, "B": fair_b}
-    
-    return {}

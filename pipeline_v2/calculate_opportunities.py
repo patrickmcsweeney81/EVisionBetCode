@@ -16,7 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 
 # Import bookmaker ratings & weighting
-from bookmaker_ratings import (
+from ratings import (
     BOOKMAKER_RATINGS,
     load_weight_config,
     calculate_book_weight,
@@ -24,25 +24,30 @@ from bookmaker_ratings import (
     get_target_books_only,
 )
 
+# Database imports (conditional)
+OddsSnapshot = None
+Base = None
+
 # Load environment
 load_dotenv()
-
-# Import database models (adjust path to EV_Finder)
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "EV_Finder" / "src"))
-from database import Base, OddsSnapshot
 
 # File locations
 RAW_CSV = Path(__file__).parent.parent / "data" / "raw_odds_pure.csv"
 EV_CSV = Path(__file__).parent.parent / "data" / "ev_opportunities.csv"
 
-# Database connection
+# Database connection (optional - only if DATABASE_URL is set)
 DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError(
-        "DATABASE_URL environment variable is not set. Please set it in your environment (e.g., in .env file)."
-    )
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine = None
+SessionLocal = None
+if DATABASE_URL:
+    try:
+        engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    except Exception as e:
+        print(f"⚠️  Database connection failed: {e}")
+        print("   Continuing with CSV output only...")
+        engine = None
+        SessionLocal = None
 
 # EV settings
 EV_MIN_EDGE = 0.01  # 1%
@@ -492,45 +497,46 @@ def write_opportunities(opportunities: List[Dict], headers: List[str]):
     except Exception as e:
         print(f"[!] Error writing CSV: {e}")
 
-    # Write to database - use raw numeric values
-    try:
-        # Create tables if not exist
-        Base.metadata.create_all(bind=engine)
-        
-        db = SessionLocal()
+    # Write to database (optional - only if connected)
+    if SessionLocal and engine:
         try:
-            # Clear old records (optional - could keep history)
-            db.query(OddsSnapshot).delete()
-            
-            # Insert new records - data is already in correct format
-            for opp in opportunities:
-                record = OddsSnapshot(
-                    timestamp=datetime.utcnow(),
-                    sport=opp.get("sport"),
-                    event_id=opp.get("event_id"),
-                    away_team=opp.get("away_team"),
-                    home_team=opp.get("home_team"),
-                    commence_time=datetime.fromisoformat(opp["commence_time"].replace("Z", "+00:00")) if opp.get("commence_time") else None,
-                    market=opp.get("market"),
-                    player=opp.get("player") if opp.get("player") else None,
-                    line=float(opp["point"]) if opp.get("point") else None,
-                    selection=opp.get("selection"),
-                    bookmaker=opp.get("best_book"),
-                    odds_decimal=opp.get("odds_decimal"),
-                    fair_odds=opp.get("fair_odds"),
-                    ev_percent=opp.get("ev_percent"),
-                    implied_prob=opp.get("implied_prob"),
-                    sharp_book_count=int(opp.get("sharp_book_count", 0)),
-                    stake=opp.get("stake")
-                )
-                db.add(record)
-            
-            db.commit()
-            print(f"[OK] Wrote {len(opportunities)} opportunities to database")
-        finally:
-            db.close()
-    except Exception as e:
-        print(f"[!] Error writing to database: {e}")
+            db = SessionLocal()
+            try:
+                # Clear old records (optional - could keep history)
+                db.query(OddsSnapshot).delete()
+                
+                # Insert new records - data is already in correct format
+                for opp in opportunities:
+                    record = OddsSnapshot(
+                        timestamp=datetime.utcnow(),
+                        sport=opp.get("sport"),
+                        event_id=opp.get("event_id"),
+                        away_team=opp.get("away_team"),
+                        home_team=opp.get("home_team"),
+                        commence_time=datetime.fromisoformat(opp["commence_time"].replace("Z", "+00:00")) if opp.get("commence_time") else None,
+                        market=opp.get("market"),
+                        player=opp.get("player") if opp.get("player") else None,
+                        line=float(opp["point"]) if opp.get("point") else None,
+                        selection=opp.get("selection"),
+                        bookmaker=opp.get("best_book"),
+                        odds_decimal=opp.get("odds_decimal"),
+                        fair_odds=opp.get("fair_odds"),
+                        ev_percent=opp.get("ev_percent"),
+                        implied_prob=opp.get("implied_prob"),
+                        sharp_book_count=int(opp.get("sharp_book_count", 0)),
+                        stake=opp.get("stake")
+                    )
+                    db.add(record)
+                
+                db.commit()
+                print(f"[OK] Wrote {len(opportunities)} opportunities to database")
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"[!] Error writing to database: {e}")
+    else:
+        print("[OK] Database not connected - skipping database write (CSV output saved)")
+
 
 
 def main():

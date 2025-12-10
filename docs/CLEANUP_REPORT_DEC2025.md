@@ -1,4 +1,4 @@
-# EV_ARB Bot VSCode - Cleanup Report (Dec 5, 2025)
+# EVisionBetCode - Cleanup Report (Dec 5, 2025)
 
 ## 🧹 Cleanup Summary
 
@@ -171,7 +171,7 @@ launcher.bat               # Quick launch script
    - Update tests in `tests/`
 
 2. **For modern UI/API:**
-   - Use `C:\EV_Finder` (clean start)
+   - Use `C:\EVisionBetSite` (clean start)
    - Reference `PRODUCT_PLAN.md` for MVP scope
    - Reference `PROJECT_ANALYSIS_DEC2025.md` for architecture
 
@@ -190,7 +190,7 @@ launcher.bat               # Quick launch script
 ## Notes
 
 - All functional logic preserved in `core/` and `ev_arb_bot.py`
-- README.txt updated to point users to EV_Finder for new projects
+- README.txt updated to point users to EVisionBetSite for new projects
 - No breaking changes to API or configuration
 - All git history preserved (nothing force-deleted)
 

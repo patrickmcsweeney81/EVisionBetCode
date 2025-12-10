@@ -118,6 +118,148 @@ class EVOpportunity(Base):
         }
 
 
+class PriceHistory(Base):
+    """Historical odds archive - enables line movement tracking"""
+    __tablename__ = "price_history"
+
+    id = Column(Integer, primary_key=True)
+    extracted_at = Column(DateTime, nullable=False)
+    sport = Column(String, nullable=False)
+    event_id = Column(String, nullable=False)
+    commence_time = Column(DateTime)
+    market = Column(String, nullable=False)
+    point = Column(Float)
+    selection = Column(String, nullable=False)
+    bookmaker = Column(String, nullable=False)
+    odds = Column(Float, nullable=False)
+    is_current = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "sport": self.sport,
+            "event_id": self.event_id,
+            "market": self.market,
+            "point": self.point,
+            "selection": self.selection,
+            "bookmaker": self.bookmaker,
+            "odds": round(self.odds, 4) if self.odds else None,
+            "extracted_at": self.extracted_at.isoformat() if self.extracted_at else None,
+            "is_current": self.is_current,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class LineMovement(Base):
+    """Line movements - price changes between extractions (GREEN/RED alerts)"""
+    __tablename__ = "line_movements"
+
+    id = Column(Integer, primary_key=True)
+    detected_at = Column(DateTime, default=datetime.utcnow)
+    sport = Column(String, nullable=False)
+    event_id = Column(String, nullable=False)
+    commence_time = Column(DateTime)
+    market = Column(String, nullable=False)
+    point = Column(Float)
+    selection = Column(String, nullable=False)
+    player_name = Column(String)
+    bookmaker = Column(String, nullable=False)
+    
+    # Price data
+    old_odds = Column(Float)
+    old_extracted_at = Column(DateTime)
+    new_odds = Column(Float, nullable=False)
+    new_extracted_at = Column(DateTime, nullable=False)
+    
+    # Deltas
+    price_change = Column(Float)
+    price_change_percent = Column(Float)
+    
+    # Classification
+    movement_type = Column(String)  # 'DOWN' (Green), 'UP' (Red), 'SAME'
+    movement_percent = Column(Float)
+    is_significant = Column(Boolean, default=False)
+    significance_level = Column(String)  # 'MINOR', 'MODERATE', 'MAJOR'
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "sport": self.sport,
+            "event_id": self.event_id,
+            "market": self.market,
+            "point": self.point,
+            "selection": self.selection,
+            "bookmaker": self.bookmaker,
+            "player_name": self.player_name,
+            "old_odds": round(self.old_odds, 4) if self.old_odds else None,
+            "new_odds": round(self.new_odds, 4) if self.new_odds else None,
+            "price_change": round(self.price_change, 4) if self.price_change else None,
+            "price_change_percent": round(self.price_change_percent, 2) if self.price_change_percent else None,
+            "movement_type": self.movement_type,  # 'DOWN' (Green), 'UP' (Red)
+            "is_significant": self.is_significant,
+            "significance_level": self.significance_level,
+            "detected_at": self.detected_at.isoformat() if self.detected_at else None,
+        }
+
+
+class PropAlert(Base):
+    """Player prop alerts - high-value prop opportunities"""
+    __tablename__ = "prop_alerts"
+
+    id = Column(Integer, primary_key=True)
+    detected_at = Column(DateTime, default=datetime.utcnow)
+    sport = Column(String, nullable=False)
+    event_id = Column(String, nullable=False)
+    commence_time = Column(DateTime)
+    
+    # Player
+    player_name = Column(String, nullable=False)
+    player_id = Column(String)
+    
+    # Prop details
+    prop_market = Column(String, nullable=False)  # 'player_points', 'player_assists', etc.
+    prop_line = Column(Float)
+    
+    # Odds
+    over_odds = Column(Float)
+    under_odds = Column(Float)
+    best_side = Column(String)  # 'OVER' or 'UNDER'
+    best_book = Column(String)
+    
+    # EV
+    ev_percent = Column(Float)
+    implied_prob = Column(Float)
+    
+    # Alert type
+    alert_type = Column(String)  # 'HIGH_EV', 'LINE_MOVE', 'SHARP_SIGNAL', 'NEW_PROP'
+    severity = Column(String)  # 'LOW', 'MEDIUM', 'HIGH'
+    
+    # Status
+    is_active = Column(Boolean, default=True)
+    closed_at = Column(DateTime)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "sport": self.sport,
+            "event_id": self.event_id,
+            "player_name": self.player_name,
+            "prop_market": self.prop_market,
+            "prop_line": self.prop_line,
+            "over_odds": round(self.over_odds, 4) if self.over_odds else None,
+            "under_odds": round(self.under_odds, 4) if self.under_odds else None,
+            "best_side": self.best_side,
+            "best_book": self.best_book,
+            "ev_percent": round(self.ev_percent, 2) if self.ev_percent else None,
+            "alert_type": self.alert_type,
+            "severity": self.severity,
+            "is_active": self.is_active,
+            "detected_at": self.detected_at.isoformat() if self.detected_at else None,
+        }
+
+
 # ============================================================================
 # FASTAPI APP SETUP
 # ============================================================================

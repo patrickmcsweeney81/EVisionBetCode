@@ -3,6 +3,7 @@ services:
     name: evision-api
     runtime: python
     plan: starter
+    rootDir: .
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn backend_api:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
@@ -14,6 +15,7 @@ services:
     name: evision-extract-odds
     runtime: python
     plan: standard
+    rootDir: .
     schedule: "*/30 * * * *"
     buildCommand: pip install -r requirements.txt
     startCommand: python -u src/pipeline_v2/extract_odds.py
@@ -29,6 +31,7 @@ services:
     name: evision-calculate-opportunities
     runtime: python
     plan: standard
+    rootDir: .
     schedule: "*/35 * * * *"
     buildCommand: pip install -r requirements.txt
     startCommand: python -u src/pipeline_v2/calculate_opportunities.py

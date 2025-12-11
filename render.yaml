@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: starter
     rootDir: .
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -e . && python run_create_tables.py
     startCommand: uvicorn backend_api:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
@@ -17,7 +17,7 @@ services:
     plan: standard
     rootDir: .
     schedule: "*/30 * * * *"
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -e .
     startCommand: python -u src/pipeline_v2/extract_odds.py
     envVars:
       - key: DATABASE_URL
@@ -33,7 +33,7 @@ services:
     plan: standard
     rootDir: .
     schedule: "*/35 * * * *"
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -e .
     startCommand: python -u src/pipeline_v2/calculate_opportunities.py
     envVars:
       - key: DATABASE_URL

@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: starter
     rootDir: .
-    buildCommand: pip install -r requirements.txt && python run_create_tables.py
+    buildCommand: pip install -r requirements.txt
     startCommand: uvicorn backend_api:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:

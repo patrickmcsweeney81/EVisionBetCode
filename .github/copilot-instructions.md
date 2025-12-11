@@ -1,8 +1,12 @@
 # EV Bot AI Agent Instructions
 
 **Project:** EV_ARB Bot – Sports Betting Expected Value Finder  
-**Status:** Production-ready (Pipeline V2)  
-**Last Updated:** December 10, 2025
+# Close current terminal, then open new one
+# Right-click PowerShell in taskbar → "Run as Administrator"
+# Then navigate to your project folder
+cd C:\EVisionBetSite
+npm install**Status:** Production-ready (Pipeline V2 + Backend API)  
+**Last Updated:** December 11, 2025
 
 ---
 
@@ -11,7 +15,65 @@
 This project identifies **expected value (EV) opportunities** in sports betting by analyzing odds from multiple bookmakers using The Odds API. The system calculates fair prices from sharp bookmakers and detects profitable edges for Australian and international bookmakers.
 
 **Core Focus:** EV-only analysis (arbitrage removed)  
-**Current Version:** Pipeline V2 (two-stage extraction + calculation)
+**Current Version:** Pipeline V2 (two-stage extraction + calculation) + FastAPI backend deployed on Render
+
+---
+
+## Developer Workflows & Essential Commands
+
+### Local Development Setup
+
+```bash
+# 1. Install dependencies
+make dev-install
+# OR: pip install -e ".[dev]"
+
+# 2. Create/update `.env` file with:
+ODDS_API_KEY=your_api_key
+DATABASE_URL=postgresql://...  # Optional for local dev (uses SQLite fallback)
+ADMIN_PASSWORD_HASH=...        # For backend API auth
+
+# 3. Test pipeline stages independently
+python src/pipeline_v2/extract_odds.py         # Stage 1: Fetch odds
+python src/pipeline_v2/calculate_opportunities.py  # Stage 2: Calculate EV
+```
+
+### Code Quality & Testing
+
+```bash
+# Run all checks
+make pre-commit
+
+# Individual checks
+make test              # pytest with coverage
+make lint              # flake8, pylint
+make format            # black, isort
+make type-check        # mypy
+```
+
+### FastAPI Backend (Local)
+
+```bash
+# Start dev server
+uvicorn backend_api:app --reload
+
+# Test endpoints
+curl http://localhost:8000/health
+curl http://localhost:8000/api/ev/hits?limit=10
+
+# With admin auth header
+curl -H "X-Admin-Password: admin123" http://localhost:8000/api/admin/stats
+```
+
+### Render Deployment Checklist
+
+1. **Cron jobs already running** - No action needed
+2. **Backend API deployment:**
+   - Create new Web Service on Render dashboard
+   - Use `render.yaml` startCommand: `uvicorn backend_api:app --host 0.0.0.0 --port $PORT`
+   - Set env vars: `DATABASE_URL` (from `.env`)
+   - Test with `/health` endpoint
+3. **Monitor health:** Check Render dashboard logs for cron job errors
 
 ---
 
@@ -205,7 +267,63 @@ File: `pipeline_v2/calculate_ev.py`
 
 ---
 
+## System Deployment Architecture
+
+### Three-Service Architecture (Render)
+
+The system runs on **Render.com** with three coordinated services:
+
+1. **`evision-extract-odds` (Cron Job)**
+   - Schedule: Every 30 minutes
+   - Script: `src/pipeline_v2/extract_odds.py`
+   - Output: `data/raw_odds_pure.csv` + PostgreSQL `live_odds` table
+   - Cost: ~194 API credits per run
+
+2. **`evision-calculate-opportunities` (Cron Job)**
+   - Schedule: Every 35 minutes (5 min after extraction)
+   - Script: `src/pipeline_v2/calculate_opportunities.py`
+   - Input: `raw_odds_pure.csv` from PostgreSQL
+   - Output: PostgreSQL `ev_opportunities` table
+   - Cost: Zero API calls
+
+3. **`evision-api` (Web Service - FastAPI)**
+   - Script: `backend_api.py`
+   - Health endpoint: `/health`
+   - API endpoints: `/api/ev/hits`, `/api/ev/summary`, `/api/odds/latest`
+   - Secured with SHA256 admin password (hashed)
+   - CORS enabled for EVisionBetSite frontend
+
+**Database:** PostgreSQL on Render (credentials in `.env`, synced to Render)
+
+### Local Development vs. Render
+
+- **Local:** Test pipeline stages independently with `.env` configuration
+- **Render:** Automatic cron schedule + Web Service API
+- **Frontend:** Auto-detects localhost (dev) vs production (evisionbet.com)
+
+### File Organization After Deployment
+
+```
+EVisionBetCode/
+├── backend_api.py            FastAPI service (Render Web)
+├── src/pipeline_v2/
+│   ├── extract_odds.py       Stage 1 (Render Cron)
+│   ├── calculate_opportunities.py  Stage 2 (Render Cron)
+│   └── ratings.py            Bookmaker 1-4 star system (52 books)
+├── src/core/
+│   ├── book_weights.py       Dynamic weight lookup
+│   ├── fair_prices.py        Fair odds calculation
+│   ├── config.py             Bookmaker lists & CSV headers
+│   └── [market handlers]     h2h.py, spreads.py, etc.
+├── data/
+│   ├── raw_odds_pure.csv     All odds (input for stage 2)
+│   └── ev_opportunities.csv  EV hits (output)
+└── [database files]
+```
+
 ## Recent Changes (December 2025)
+
+✅ **Backend API Deployed (Dec 10):** FastAPI service with `/api/ev/hits`, `/api/odds/latest`, `/health`. Admin authentication via SHA256 password hash.
 
 ✅ **Bookmaker Ratings System (Dec 10):** Implemented 1-4 star rating system (52 books total) with weighted fair odds calculation. Sport-specific weight profiles for 8 sports.
 
@@ -238,6 +356,40 @@ File: `pipeline_v2/calculate_ev.py`
 - Verify sharp_book_count accuracy
 - Check EV% calculations against manual spot checks
 - Validate CSV headers and column order
+
+---
+
+## Cross-System Patterns
+
+### Frontend-Backend Integration (EVisionBetCode ↔ EVisionBetSite)
+
+**Frontend Configuration:** EVisionBetSite/frontend/src/config.js
+- Auto-detects localhost (dev) vs production URL
+- Fallback to `https://evision-api.onrender.com` (production)
+- Used by all API client calls in `frontend/src/api/client.js`
+
+**Backend Endpoints:**
+- `GET /health` - Health check (no auth required)
+- `GET /api/ev/hits?limit=50&sport=nba` - Latest EV opportunities
+- `GET /api/odds/latest?sport=nba` - All latest odds with bookmaker columns
+- `POST /api/admin/stats` - Stats endpoint (requires X-Admin-Password header)
+
+**CORS Configuration:** `backend_api.py` allows requests from localhost and evisionbet.com
+
+**Data Refresh:** Frontend polls `/api/ev/hits` every 2 minutes (auto-refresh)
+
+### Render Service Coordination
+
+**Timing critical:** 
+- Extract runs at :00 and :30 every hour
+- Calculate runs 5 minutes later (at :05 and :35)
+- Failure in extract = calculate skipped
+- Monitor `log_runner` pattern in both scripts for debugging
+
+**Environment sync:**
+- Changes to `.env` locally must be manually updated in Render service env vars
+- Use Render dashboard to update DATABASE_URL and ODDS_API_KEY
+- Do NOT commit `.env` to git (contains credentials)
 
 ---
 

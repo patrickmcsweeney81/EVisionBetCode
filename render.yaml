@@ -10,25 +10,33 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: LOG_LEVEL
+        value: DEBUG
 
   - type: cron
     name: evision-extract-odds
-    env: python
+    runtime: python
     plan: standard
-    pythonVersion: 3.13
     schedule: "*/30 * * * *"
-    command: cd /opt/render/project && python src/pipeline_v2/extract_odds.py
+    startCommand: bash -c 'echo "[DEBUG] $(date)" && pwd && ls -la && python -u pipeline_v2/extract_odds.py 2>&1'
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: DEBUG
+        value: "true"
 
   - type: cron
     name: evision-calculate-opportunities
-    env: python
+    runtime: python
     plan: standard
-    pythonVersion: 3.13
     schedule: "*/35 * * * *"
-    command: cd /opt/render/project && python src/pipeline_v2/calculate_opportunities.py
+    startCommand: bash -c 'echo "[DEBUG] $(date)" && pwd && ls -la data/ 2>/dev/null || echo "[DEBUG] data/ not found" && python -u pipeline_v2/calculate_opportunities.py 2>&1'
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: DEBUG
+        value: "true"

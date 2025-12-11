@@ -22,9 +22,15 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
 
-# Load environment - look for .env in parent directory
-env_path = Path(__file__).parent.parent / ".env"
-load_dotenv(dotenv_path=env_path)
+# Load environment - look for .env in project root
+env_paths = [
+    Path(__file__).parent.parent.parent / ".env",  # src/pipeline_v2 -> root/.env
+    Path(__file__).parent.parent / ".env",  # fallback to src/.env
+]
+for env_path in env_paths:
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+        break
 API_KEY = os.getenv("ODDS_API_KEY", "")
 
 # File locations - use absolute paths for reliability
@@ -75,7 +81,7 @@ RAW_CSV = DATA_DIR / "raw_odds_pure.csv"
 
 # API Configuration
 ODDS_API_HOST = "https://api.the-odds-api.com"
-SPORTS = ["basketball_nba", "americanfootball_nfl", "icehockey_nhl"]  # Can add more
+SPORTS = ["basketball_nba", "americanfootball_nfl", "icehockey_nhl", "basketball_nbl", "soccer_epl", "cricket_big_bash"]  # Can add more
 # Include EU to ensure Pinnacle is returned by The Odds API
 # Cost note: adding EU increases credits vs au,us only
 REGIONS = os.getenv("REGIONS", "au,us,eu")

@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import List, Optional
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, String, Float, DateTime, Integer, Text, text
+from sqlalchemy import create_engine, Column, String, Float, DateTime, Integer, Text, Boolean, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv

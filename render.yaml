@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: evision-api
+    env: python
+    plan: standard
+    pythonVersion: 3.13
+    buildCommand: pip install -r requirements.txt && python run_create_tables.py
+    startCommand: uvicorn backend_api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+
+  - type: cron
+    name: evision-extract-odds
+    env: python
+    plan: standard
+    pythonVersion: 3.13
+    schedule: "*/30 * * * *"
+    command: cd /opt/render/project && python src/pipeline_v2/extract_odds.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+
+  - type: cron
+    name: evision-calculate-opportunities
+    env: python
+    plan: standard
+    pythonVersion: 3.13
+    schedule: "*/35 * * * *"
+    command: cd /opt/render/project && python src/pipeline_v2/calculate_opportunities.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false

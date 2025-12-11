@@ -1,3 +1,4 @@
+
 services:
   - type: web
     name: evision-api
@@ -18,7 +19,7 @@ services:
     runtime: python
     plan: standard
     schedule: "*/30 * * * *"
-    startCommand: bash -c 'echo "[DEBUG] $(date)" && pwd && ls -la && python -u pipeline_v2/extract_odds.py 2>&1'
+    startCommand: bash -c 'echo "[DEBUG] $(date)" && pwd && ls -la && python -u src/pipeline_v2/extract_odds.py 2>&1'
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -32,7 +33,7 @@ services:
     runtime: python
     plan: standard
     schedule: "*/35 * * * *"
-    startCommand: bash -c 'echo "[DEBUG] $(date)" && pwd && ls -la data/ 2>/dev/null || echo "[DEBUG] data/ not found" && python -u pipeline_v2/calculate_opportunities.py 2>&1'
+    startCommand: bash -c 'echo "[DEBUG] $(date)" && pwd && ls -la data/ 2>/dev/null || echo "[DEBUG] data/ not found" && python -u src/pipeline_v2/calculate_opportunities.py 2>&1'
     envVars:
       - key: DATABASE_URL
         sync: false

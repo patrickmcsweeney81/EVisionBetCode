@@ -1,12 +1,8 @@
 # EV Bot AI Agent Instructions
 
 **Project:** EV_ARB Bot – Sports Betting Expected Value Finder  
-# Close current terminal, then open new one
-# Right-click PowerShell in taskbar → "Run as Administrator"
-# Then navigate to your project folder
-cd C:\EVisionBetSite
-npm install**Status:** Production-ready (Pipeline V2 + Backend API)  
-**Last Updated:** December 11, 2025
+**Status:** Production-ready (Pipeline V2 + Backend API + Render Deployment)  
+**Last Updated:** December 12, 2025
 
 ---
 
@@ -393,8 +389,96 @@ EVisionBetCode/
 
 ---
 
+---
+
+## Critical Architectural Patterns for AI Agents
+
+### Data Flow & File Organization
+- **Raw odds extraction** → `data/raw_odds_pure.csv` (stage 1: wide format, one row = market/outcome combo across all bookmakers)
+- **EV calculation** → `data/ev_opportunities.csv` (stage 2: filtered hits >=1% edge)
+- **Database sync** → PostgreSQL `live_odds` and `ev_opportunities` tables (optional but required for Render deployment)
+- **Frontend connection** → Backend API endpoints return database rows; frontend polls `/api/ev/hits` every 2 min
+
+### File Path Resolution (Critical for Render)
+Both pipeline stages use `get_data_dir()` function that tries multiple locations:
+1. `Path(__file__).parent.parent / "data"` (script-relative, local dev)
+2. `Path.cwd() / "data"` (current working dir, Render cron jobs)
+3. Parent folder detection if `"src"` is in path
+4. Fallback to script-relative location
+
+**When adding file I/O:** Always use `get_data_dir()` pattern, never hardcoded paths. This ensures code works in both local and Render environments.
+
+### Bookmaker Rating System (Core Logic)
+File: `src/pipeline_v2/ratings.py`
+- **BOOKMAKER_RATINGS** dict: 52 bookmakers with 1-4 star ratings
+- **SPORT_WEIGHT_PROFILES**: Weight distributions per sport (NBA: 35/40/15/10, NHL: 50/30/10/10, etc.)
+- `get_sharp_books_only()`: Returns 3⭐+4⭐ books for fair odds calculation
+- `get_target_books_only()`: Returns 1⭐ books used for EV detection only
+
+**Critical rule:** Fair odds calculated ONLY from sharp books (3⭐+4⭐), but EV detection uses all books to identify opportunities at 1⭐ bookmakers.
+
+### Fair Odds Calculation (High-Priority Bug Zone)
+File: `src/pipeline_v2/calculate_opportunities.py` - look for `fair_from_sharps()` function
+```python
+# CRITICAL: Separate weight totals for Over/Under sides
+weight_over = sum(weights for book in over_sharps)
+weight_under = sum(weights for book in under_sharps)
+# Don't use single total - this was a dec 10 bugfix!
+fair_over = sum(devig_odds[book] * weights[book] for book in over_sharps) / weight_over
+fair_under = sum(devig_odds[book] * weights[book] for book in under_sharps) / weight_under
+```
+**When modifying fair odds:** Test with sports containing 100+ rows and verify `fair_odds` column values make sense (~1.5-2.0 typically).
+
+### Player Props Grouping (5-Tuple Key)
+Critical bug fixed December 2025: Player props must be isolated per player using:
+```python
+grouping_key = (sport, event_id, market, point, player_name)
+```
+**Never:** Group by just (market, point) - this causes multiple players to share same fair odds.  
+**When fixing props issues:** Search for "grouping_key" or "5-tuple" in calculate_opportunities.py to find isolation logic.
+
+### Environment Variable Patterns
+- **Local dev:** `ODDS_API_KEY`, `DATABASE_URL` (optional), `REGIONS=au,us`
+- **Render cron:** Same vars in Render service dashboard, not in `.env` (env synced but not committed)
+- **Render API:** Add `ADMIN_PASSWORD_HASH` for fastapi backend auth
+- **Frontend:** Checks `window.location.hostname` to auto-detect localhost vs production API URL
+
+### Timing Dependencies (Render Cron)
+- Extract job runs at :00 and :30 every hour (194 API credits per run)
+- Calculate job runs 5 minutes later (:05, :35) - depends on extract success
+- If extract fails, calculate is skipped automatically
+- **Monitor pattern:** Both scripts log via `log_runner()` function for debugging on Render
+
+### Testing Patterns
+**Unit testing sports logic:**
+```bash
+python -m pytest tests/test_fair_odds.py -v
+python -m pytest tests/test_grouping.py -v
+```
+**Integration testing full pipeline:**
+```bash
+python src/pipeline_v2/extract_odds.py  # Needs ODDS_API_KEY
+python src/pipeline_v2/calculate_opportunities.py  # Zero API calls
+```
+**Manual spot checks:**
+- Verify `sharp_book_count` (>= 2) indicates number of sharp sources
+- Check `ev_percent` formula: `(fair_odds / market_odds - 1) * 100`
+- Ensure CSV headers match expected columns (see `config.py` for standard headers)
+
+### Common Implementation Errors to Avoid
+1. **Hardcoded `/data` paths** - Use `get_data_dir()` instead
+2. **Single weight total for both Over/Under** - Bug: breaks fair odds calculation
+3. **Player prop grouping on (market, point) only** - Creates grouped fair odds instead of per-player
+4. **Missing deduplication check** - Always check `seen_hits.json` before writing to CSV
+5. **Direct database writes without fallback** - Code should work even if DATABASE_URL not set
+6. **Time filtering edge cases** - The Odds API returns ALL events; must filter by `commence_time` client-side
+
+---
+
 ## Documentation
 
 - **README.md** - Overview and quick start
 - **pipeline_v2/README.md** - Detailed pipeline architecture
+- **SYSTEM_ARCHITECTURE.md** - Three-service Render deployment diagram
+- **docs/BUGFIX_FAIR_ODDS_DEC10_2025.md** - Fair odds calculation history
 - **.env** - Configuration reference

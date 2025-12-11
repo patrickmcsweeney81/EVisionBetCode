@@ -63,7 +63,6 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
 # pytest configuration
 [tool.pytest.ini_options]
 testpaths = ["tests"]

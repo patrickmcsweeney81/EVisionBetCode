@@ -41,14 +41,22 @@ def verify_admin_password(password: str) -> bool:
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable not set")
+    # Fallback for development/testing - use SQLite
+    DATABASE_URL = "sqlite:///./ev_bot.db"
+    print("⚠️  DATABASE_URL not set - using SQLite fallback")
+else:
+    # Replace postgres:// with postgresql:// for SQLAlchemy 1.4+
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Replace postgres:// with postgresql:// for SQLAlchemy 1.4+
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+try:
+    engine = create_engine(DATABASE_URL, echo=False)
+except Exception as e:
+    print(f"⚠️  Database connection error: {e}")
+    print("⚠️  Starting app without database - API will return no data")
+    engine = None
 
-engine = create_engine(DATABASE_URL, echo=False)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine) if engine else None
 Base = declarative_base()
 
 # ============================================================================

@@ -567,7 +567,7 @@ def write_opportunities(opportunities: List[Dict], headers: List[str]):
         try:
             db = SessionLocal()
             try:
-                # Clear old records (optional - could keep history)
+                # Clear old records - we keep only latest opportunities
                 db.query(EVOpportunity).delete()
                 
                 # Insert new records - data is already in correct format
@@ -602,13 +602,14 @@ def write_opportunities(opportunities: List[Dict], headers: List[str]):
                     db.add(record)
                 
                 db.commit()
-                print(f"[OK] Wrote {len(opportunities)} opportunities to database")
+                print(f"[OK] ✅ Wrote {len(opportunities)} opportunities to PostgreSQL database")
             finally:
                 db.close()
         except Exception as e:
-            print(f"[!] Error writing to database: {e}")
+            print(f"[!] Database write error (non-fatal): {e}")
+            print(f"[OK] CSV output saved as backup (no database connection or write failed)")
     else:
-        print("[OK] Database not connected - skipping database write (CSV output saved)")
+        print("[OK] Database not connected - CSV output saved")
 
 
 

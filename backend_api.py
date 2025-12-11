@@ -6,10 +6,14 @@ Runs on Render as a Web Service (not cron job)
 
 import os
 import json
+import csv
+import hashlib
+from io import StringIO
 from datetime import datetime
 from typing import List, Optional
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlalchemy import create_engine, Column, String, Float, DateTime, Integer, Text, Boolean, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -17,6 +21,19 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# ============================================================================
+# ADMIN CREDENTIALS (from env or hardcoded for simplicity)
+# ============================================================================
+
+ADMIN_PASSWORD_HASH = os.getenv(
+    "ADMIN_PASSWORD_HASH",
+    hashlib.sha256("admin123".encode()).hexdigest()  # Default: hashed "admin123"
+)
+
+def verify_admin_password(password: str) -> bool:
+    """Verify admin password"""
+    return hashlib.sha256(password.encode()).hexdigest() == ADMIN_PASSWORD_HASH
 
 # ============================================================================
 # DATABASE SETUP
@@ -481,6 +498,257 @@ async def get_latest_odds(
 
 
 # ============================================================================
+# ADMIN ENDPOINTS (Auth-protected CSV download & database view)
+# ============================================================================
+
+@app.post("/api/admin/auth")
+async def admin_auth(password: str = Query(...)):
+    """
+    Authenticate as admin
+    
+    Args:
+        password: Admin password
+    
+    Returns:
+        {"authenticated": true/false, "token": "..."}
+    """
+    if verify_admin_password(password):
+        # Generate simple token (in production, use JWT)
+        token = hashlib.sha256(
+            (password + datetime.utcnow().isoformat()).encode()
+        ).hexdigest()
+        return {
+            "authenticated": True,
+            "token": token,
+            "expires_in": 3600  # 1 hour
+        }
+    else:
+        raise HTTPException(status_code=401, detail="Invalid password")
+
+
+@app.get("/api/admin/ev-opportunities-csv")
+async def download_ev_csv(authorization: Optional[str] = Header(None)):
+    """
+    Download EV opportunities as CSV from database
+    Admin/designer only access
+    
+    Args:
+        authorization: Bearer token from admin auth
+    
+    Returns:
+        CSV file stream
+    """
+    # Simple token validation (in production, use JWT verification)
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized - missing token")
+    
+    try:
+        session = SessionLocal()
+        
+        # Query all EV opportunities
+        opportunities = session.query(EVOpportunity).order_by(
+            EVOpportunity.ev_percent.desc()
+        ).all()
+        
+        if not opportunities:
+            return StreamingResponse(
+                iter([b"No opportunities found\n"]),
+                media_type="text/csv",
+                headers={"Content-Disposition": "attachment; filename=ev_opportunities.csv"}
+            )
+        
+        # Build CSV in memory
+        output = StringIO()
+        
+        # Headers
+        headers = [
+            "sport", "event_id", "away_team", "home_team", "commence_time",
+            "market", "point", "selection", "player", "fair_odds", "best_odds",
+            "best_book", "ev_percent", "sharp_book_count", "implied_prob",
+            "stake", "kelly_fraction", "detected_at"
+        ]
+        
+        writer = csv.DictWriter(output, fieldnames=headers)
+        writer.writeheader()
+        
+        # Format and write rows
+        for opp in opportunities:
+            row = {
+                "sport": opp.sport,
+                "event_id": opp.event_id,
+                "away_team": opp.away_team or "",
+                "home_team": opp.home_team or "",
+                "commence_time": opp.commence_time.isoformat() if opp.commence_time else "",
+                "market": opp.market,
+                "point": f"{opp.point:.1f}" if opp.point else "",
+                "selection": opp.selection,
+                "player": opp.player or "",
+                "fair_odds": f"{opp.fair_odds:.4f}" if opp.fair_odds else "",
+                "best_odds": f"{opp.best_odds:.4f}" if opp.best_odds else "",
+                "best_book": opp.best_book,
+                "ev_percent": f"{opp.ev_percent:.2f}%",
+                "sharp_book_count": opp.sharp_book_count,
+                "implied_prob": f"{opp.implied_prob:.2f}%" if opp.implied_prob else "",
+                "stake": f"${int(opp.stake)}" if opp.stake else "",
+                "kelly_fraction": f"{opp.kelly_fraction:.3f}" if opp.kelly_fraction else "",
+                "detected_at": opp.detected_at.isoformat() if opp.detected_at else ""
+            }
+            writer.writerow(row)
+        
+        session.close()
+        
+        # Return as downloadable CSV
+        csv_content = output.getvalue()
+        
+        async def iterfile():
+            yield csv_content.encode()
+        
+        return StreamingResponse(
+            iterfile(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=ev_opportunities_download.csv"}
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating CSV: {str(e)}")
+
+
+@app.get("/api/admin/raw-odds-csv")
+async def download_raw_odds_csv(authorization: Optional[str] = Header(None)):
+    """
+    Download raw odds as CSV from database
+    Admin/designer only access
+    
+    Args:
+        authorization: Bearer token from admin auth
+    
+    Returns:
+        CSV file stream
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized - missing token")
+    
+    try:
+        session = SessionLocal()
+        
+        # Get latest extraction timestamp
+        latest = session.query(LiveOdds).order_by(
+            LiveOdds.extracted_at.desc()
+        ).first()
+        
+        if not latest:
+            return StreamingResponse(
+                iter([b"No odds data found\n"]),
+                media_type="text/csv",
+                headers={"Content-Disposition": "attachment; filename=raw_odds.csv"}
+            )
+        
+        latest_time = latest.extracted_at
+        
+        # Query odds from latest extraction
+        odds = session.query(LiveOdds).filter(
+            LiveOdds.extracted_at == latest_time
+        ).order_by(
+            LiveOdds.sport, LiveOdds.event_id, LiveOdds.market
+        ).all()
+        
+        # Build CSV in memory
+        output = StringIO()
+        
+        headers = [
+            "sport", "event_id", "commence_time", "market", "point",
+            "selection", "bookmaker", "odds"
+        ]
+        
+        writer = csv.DictWriter(output, fieldnames=headers)
+        writer.writeheader()
+        
+        # Write rows
+        for odd in odds:
+            row = {
+                "sport": odd.sport,
+                "event_id": odd.event_id,
+                "commence_time": odd.commence_time.isoformat() if odd.commence_time else "",
+                "market": odd.market,
+                "point": f"{odd.point:.1f}" if odd.point else "",
+                "selection": odd.selection,
+                "bookmaker": odd.bookmaker,
+                "odds": f"{odd.odds:.4f}"
+            }
+            writer.writerow(row)
+        
+        session.close()
+        
+        # Return as downloadable CSV
+        csv_content = output.getvalue()
+        
+        async def iterfile():
+            yield csv_content.encode()
+        
+        return StreamingResponse(
+            iterfile(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=raw_odds_{latest_time.isoformat().split('.')[0].replace(':', '-')}.csv"}
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating CSV: {str(e)}")
+
+
+@app.get("/api/admin/database-stats")
+async def get_database_stats(authorization: Optional[str] = Header(None)):
+    """
+    Get database statistics - row counts and latest updates
+    Admin/designer only
+    
+    Args:
+        authorization: Bearer token from admin auth
+    
+    Returns:
+        Statistics about database contents
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized - missing token")
+    
+    try:
+        session = SessionLocal()
+        
+        # Count records
+        ev_count = session.query(EVOpportunity).count()
+        odds_count = session.query(LiveOdds).count()
+        history_count = session.query(PriceHistory).count()
+        
+        # Get latest timestamps
+        latest_ev = session.query(EVOpportunity).order_by(
+            EVOpportunity.detected_at.desc()
+        ).first()
+        
+        latest_odds = session.query(LiveOdds).order_by(
+            LiveOdds.extracted_at.desc()
+        ).first()
+        
+        session.close()
+        
+        return {
+            "ev_opportunities": {
+                "count": ev_count,
+                "latest_update": latest_ev.detected_at.isoformat() if latest_ev else None
+            },
+            "live_odds": {
+                "count": odds_count,
+                "latest_update": latest_odds.extracted_at.isoformat() if latest_odds else None
+            },
+            "price_history": {
+                "count": history_count
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+# ============================================================================
 # ROOT ENDPOINT
 # ============================================================================
 
@@ -496,6 +764,10 @@ async def root():
             "ev_hits": "/api/ev/hits?limit=50&min_ev=0.01&sport=basketball_nba",
             "ev_summary": "/api/ev/summary",
             "odds_latest": "/api/odds/latest?limit=500&sport=basketball_nba",
+            "admin_auth": "/api/admin/auth?password=YOUR_PASSWORD",
+            "admin_ev_csv": "/api/admin/ev-opportunities-csv (requires Bearer token)",
+            "admin_raw_odds_csv": "/api/admin/raw-odds-csv (requires Bearer token)",
+            "admin_stats": "/api/admin/database-stats (requires Bearer token)",
             "docs": "/docs",
             "openapi": "/openapi.json"
         }

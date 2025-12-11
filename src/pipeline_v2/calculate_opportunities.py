@@ -15,6 +15,11 @@ from sqlalchemy import create_engine, Column, String, Float, DateTime, Integer
 from sqlalchemy.orm import sessionmaker, declarative_base
 from dotenv import load_dotenv
 
+# Add script directory to Python path for relative imports (needed for Render cron jobs)
+SCRIPT_DIR = Path(__file__).parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
 # Import bookmaker ratings & weighting
 from ratings import (
     BOOKMAKER_RATINGS,

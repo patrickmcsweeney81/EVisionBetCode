@@ -131,7 +131,7 @@ DATABASE_URL_POOLED=postgresql://user:password@host:6543/dbname
 
 **Build Settings:**
 - Build command: `pip install -r requirements.txt`
-- Start command: `python pipeline_v2/extract_odds.py`
+- Start command: `python src/pipeline_v2/extract_odds.py`
 
 **Environment Variables:**
 Add to Render environment (or use .env file):
@@ -173,7 +173,7 @@ If cron jobs aren't available:
 
 **Build Settings:**
 - Build command: `pip install -r requirements.txt`
-- Start command: `python pipeline_v2/calculate_opportunities.py`
+- Start command: `python src/pipeline_v2/calculate_opportunities.py`
 
 **Environment Variables:**
 Same as above

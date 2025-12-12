@@ -65,7 +65,7 @@ REGIONS=au,us,eu             # EU added to ensure Pinnacle odds
 ODDS_FORMAT=decimal
 ```
 
-**Time Window (in `raw_odds_pure.py`):**
+**Time Window (in `extract_odds.py`):**
 ```python
 EVENT_MIN_MINUTES = 5   # Don't fetch events <5 min from now
 EVENT_MAX_HOURS = 48    # Don't fetch events >48 hrs out

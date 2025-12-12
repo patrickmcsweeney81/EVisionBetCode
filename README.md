@@ -88,10 +88,10 @@ EV_ARB Bot scans sports betting odds across multiple bookmakers and identifies *
 
 ```bash
 # Stage 1: Extract raw odds (costs ~194 API credits)
-python pipeline_v2/raw_odds_pure.py
+python src/pipeline_v2/extract_odds.py
 
 # Stage 2: Calculate EV on extracted odds (no API calls)
-python pipeline_v2/calculate_ev.py
+python src/pipeline_v2/calculate_opportunities.py
 ```
 
 

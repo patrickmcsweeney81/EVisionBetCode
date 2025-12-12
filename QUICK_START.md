@@ -226,8 +226,8 @@ Donte DiVincenzo Under 3.5 assists @ Dabble 2.1
 ## Next Steps
 
 1. **Configure `.env`** with your Odds API key
-2. **Run Stage 1:** `python pipeline_v2/extract_odds.py`
-3. **Run Stage 2:** `python pipeline_v2/calculate_ev.py`
+2. **Run Stage 1:** `python src/pipeline_v2/extract_odds.py`
+3. **Run Stage 2:** `python src/pipeline_v2/calculate_opportunities.py`
 4. **Review:** `data/ev_opportunities.csv`
 5. **Place bets** on opportunities with positive EV!
 
@@ -243,9 +243,9 @@ Donte DiVincenzo Under 3.5 assists @ Dabble 2.1
 - `.env` - Configuration
 
 ### Pipeline V2
-- `pipeline_v2/raw_odds_pure.py` - Raw extraction (609 lines)
-- `pipeline_v2/calculate_ev.py` - EV calculator (395 lines)
-- `pipeline_v2/README.md` - Full docs
+- `src/pipeline_v2/extract_odds.py` - Raw extraction (609 lines)
+- `src/pipeline_v2/calculate_opportunities.py` - EV calculator (395 lines)
+- `src/pipeline_v2/README.md` - Full docs
 
 ### Documentation
 - `docs/TWO_STAGE_PIPELINE.md` - Architecture

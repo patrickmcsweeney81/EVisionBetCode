@@ -118,7 +118,7 @@ fair_odds = build_fair_price_from_books(
 ### **Example 4: Process H2H Event (v2.0)**
 
 ```python
-from core.h2h_handler import process_h2h_event_v2
+from core.h2h import process_h2h_event_v2
 
 # Process with sport context for optimized weights
 result = process_h2h_event_v2(

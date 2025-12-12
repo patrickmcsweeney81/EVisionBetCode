@@ -36,45 +36,33 @@ API_KEY = os.getenv("ODDS_API_KEY", "")
 # File locations - use absolute paths for reliability
 # Try multiple locations to support both local and Render deployments
 def get_data_dir():
-    """Find data directory - supports local and Render deployments"""
-    # Option 1: Relative to script location (most common)
-    script_parent = Path(__file__).parent.parent
-    data_path = script_parent / "data"
-    if not data_path.exists():
-        try:
-            data_path.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            pass
-    if data_path.exists():
-        return data_path
-    
-    # Option 2: Current working directory (Render cron jobs)
+    """Find data directory - robust for Render and local dev."""
     cwd = Path.cwd()
+ # Strip duplicate /src/src patterns (Render bug)
+    cwd_str = str(cwd).replace("\\src\\src", "\\src").replace("/src/src", "/src")
+    cwd = Path(cwd_str)
+    
+    # Priority 1: cwd/data
     data_path = cwd / "data"
-    if not data_path.exists():
-        try:
-            data_path.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            pass
-    if data_path.exists():
+    data_path.mkdir(parents=True, exist_ok=True)
+    if data_path.exists() and data_path.is_dir():
         return data_path
     
-    # Option 3: Check if we're in /src subdirectory
-    if "src" in str(cwd):
-        parent = cwd.parent
-        data_path = parent / "data"
-        if not data_path.exists():
-            try:
-                data_path.mkdir(parents=True, exist_ok=True)
-            except Exception:
-                pass
-        if data_path.exists():
+    # Priority 2: parent/data if cwd is /src
+    if cwd.name == "src":
+        data_path = cwd.parent / "data"
+        data_path.mkdir(parents=True, exist_ok=True)
+        if data_path.exists() and data_path.is_dir():
             return data_path
     
-    # Default fallback
+    # Priority 3: script parent
+    script_parent = Path(__file__).parent.parent
     data_path = script_parent / "data"
     data_path.mkdir(parents=True, exist_ok=True)
-    return data_path
+    if data_path.exists() and data_path.is_dir():
+        return data_path
+    
+    return cwd / "data"
 
 DATA_DIR = get_data_dir()
 RAW_CSV = DATA_DIR / "raw_odds_pure.csv"

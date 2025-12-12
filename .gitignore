@@ -1,3 +1,7 @@
+
+# EV_ARB Bot Backend .gitignore
+# Only version code, docs, and config. Ignore all secrets, data, and temp files.
+
 # Python
 __pycache__/
 *.py[cod]
@@ -11,7 +15,7 @@ build/
 venv/
 ENV/
 
-# Environment variables
+# Environment variables & secrets
 .env
 *.env.local
 
@@ -21,11 +25,13 @@ data/
 *.json
 !core/__init__.py
 
-# IDE
+# IDE/project files
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-workspace
+*.sublime-project
 *~
 
 # Logs & debug output
@@ -38,6 +44,18 @@ test_*.txt
 # API responses
 *.json
 !package.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.bak
+*.tmp
+*.orig
+
+# Node (if present for scripts)
+node_modules/
 
 # OS
 .DS_Store

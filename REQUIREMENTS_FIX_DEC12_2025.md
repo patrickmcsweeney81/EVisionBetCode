@@ -97,14 +97,17 @@ After deploying to Render, verify:
 
 When updating dependencies:
 1. Update `pyproject.toml` first (source of truth)
-2. Regenerate `requirements.txt`: `pip freeze > requirements.txt` (or manually sync)
+2. Manually sync `requirements.txt` with production dependencies from `pyproject.toml`
 3. Test locally with `pip install -r requirements.txt`
 4. Commit both files together
 
-Alternatively, consider using:
+**Recommended approach using pip-tools:**
 ```bash
-pip-compile pyproject.toml  # Requires pip-tools
+pip install pip-tools
+pip-compile pyproject.toml -o requirements.txt
 ```
+
+**Note:** Avoid `pip freeze > requirements.txt` as it includes all installed packages (dev dependencies and transitive dependencies), not just production requirements.
 
 ## Status
 

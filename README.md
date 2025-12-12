@@ -263,7 +263,28 @@ Edit `calculate_opportunities.py`:
 - **Data:** Real-time odds from multiple bookmakers
 - **Updates:** Check `/docs` folder for detailed guides
 
+
 For questions, refer to:
 - `pipeline_v2/README.md` - Pipeline-specific details
 - `docs/TWO_STAGE_PIPELINE.md` - Architecture documentation
 - `docs/RAW_ODDS_EXTRACTION.md` - Extraction specifics
+
+## License
+
+ISC
+
+---
+
+## Contributing
+
+Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change. See the `/docs` folder for architecture and contribution guidelines.
+
+---
+
+**Frontend repo:** [EVisionBetSite](https://github.com/patrickmcsweeney81/EVisionBetSite)
+
+**Maintainer:** Patrick McSweeney
+
+## Author
+
+Patrick McSweeney

@@ -39,6 +39,7 @@ data/
 debug_*.txt
 test_*.txt
 *.txt
+!requirements.txt
 !README.txt
 
 # API responses

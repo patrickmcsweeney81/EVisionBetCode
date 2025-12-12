@@ -42,3 +42,14 @@ test_*.txt
 # OS
 .DS_Store
 Thumbs.db
+
+# Misc
+*.bak
+*.tmp
+*.orig
+*.sublime-workspace
+*.sublime-project
+
+# OS
+.DS_Store
+Thumbs.db

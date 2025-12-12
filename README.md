@@ -10,13 +10,6 @@
 EV_ARB Bot scans sports betting odds across multiple bookmakers and identifies **expected value (EV) opportunities**. Using The Odds API, it fetches real-time odds, calculates fair prices from sharp bookmakers, and detects profitable betting edges for Australian and global bookmakers.
 
 **Key Features:**
-- ✅ EV-only analysis (arbitrage removed)
-- ✅ Multi-sport support: NBA, NFL, NHL, NCAA Football
-- ✅ Player props (NBA/NFL only; NHL supports core markets only)
-- ✅ Wide CSV format with individual bookmaker columns
-- ✅ 80% more cost-efficient than legacy system
-- ✅ Per-player prop isolation for accurate EV calculation
-- ✅ Pinnacle sharp odds included in all outputs
 
 ---
 

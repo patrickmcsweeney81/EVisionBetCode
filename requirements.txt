@@ -1,7 +1,11 @@
-# Combined requirements for Render deployment
-# Includes base production dependencies
-requests>=2.32.0
-python-dateutil>=2.9.0
-python-dotenv>=1.0.0
-gunicorn
+# Complete requirements for Render deployment
+fastapi
 uvicorn
+gunicorn
+python-dotenv
+psycopg2-binary
+numpy
+requests
+pandas
+pytest
+sqlalchemy

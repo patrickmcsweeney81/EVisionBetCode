@@ -30,7 +30,12 @@ uvicorn[standard]>=0.27.0
 # Database
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.0
+
+# Install the package itself in editable mode (for src/ layout)
+-e .
 ```
+
+The `-e .` line installs the project itself in editable mode, which is required for the `src/` layout to work properly. This allows imports like `from pipeline_v2.ratings import ...` and `from core.config import ...` to work correctly.
 
 ## Testing
 

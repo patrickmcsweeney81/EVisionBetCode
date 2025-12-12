@@ -15,7 +15,7 @@ EV_ARB Bot scans sports betting odds across multiple bookmakers and identifies *
 
 ## Quick Start
 
-### Option 1: Full Pipeline (Recommended)
+# Option 1: Full Pipeline (Recommended)
 
 ```bash
 # Stage 1: Extract raw odds (costs ~194 API credits)
@@ -25,7 +25,7 @@ python pipeline_v2/raw_odds_pure.py
 python pipeline_v2/calculate_ev.py
 ```
 
-**Output:** `data/ev_opportunities.csv` with all EV opportunities
+# Output: `data/ev_opportunities.csv` with all EV opportunities
 
 ### Option 2: Legacy System
 
@@ -42,25 +42,40 @@ launcher.bat
 
 ### Pipeline V2 (Current)
 
-**File Structure:**
-```
 pipeline_v2/
 ├── extract_odds.py           Stage 1: Fetch and extract raw odds
 ├── calculate_opportunities.py Stage 2: Compute EV from raw data
 ├── ratings.py                Bookmaker ratings and weighting
 └── README.md                 Detailed pipeline documentation
+**File Structure:**
+pipeline_v2/
+├── extract_odds.py           Stage 1: Fetch and extract raw odds
+├── calculate_opportunities.py Stage 2: Compute EV from raw data
+├── ratings.py                Bookmaker ratings and weighting
+└── README.md                 Detailed pipeline documentation
+```text
 ```
 
+
 **Data Flow:**
-```
 The Odds API
     ↓
 [extract_odds.py] → raw_odds_pure.csv
     ↓
 [calculate_opportunities.py] → ev_opportunities.csv
+
+```text
+The Odds API
+  ↓
+[extract_odds.py] → raw_odds_pure.csv
+  ↓
+[calculate_opportunities.py] → ev_opportunities.csv
 ```
 
+
+
 **Current Results (as of Dec 9, 2025):**
+
 - **1,209 raw odds rows** extracted
   - NBA: 834 rows
   - NFL: 306 rows
@@ -72,11 +87,11 @@ The Odds API
 
 ---
 
-## Configuration
+# Configuration
 
 All settings are controlled via the `.env` file:
 
-```bash
+```env
 # API Configuration
 ODDS_API_KEY=your_key_here                # Required
 REGIONS=au,us                             # Fetch from AU and US bookmakers
@@ -104,6 +119,7 @@ KELLY_FRACTION=0.25
 
 ## Key Concepts
 
+
 ### Fair Price Calculation
 
 Fair odds are computed as the **median** of sharp bookmakers:
@@ -125,32 +141,38 @@ Fair odds are computed as the **median** of sharp bookmakers:
 - Betfair odds are reduced by commission (default 6%)
 - Requires minimum 2 sharp sources for fair price validity
 
+
 ### Expected Value (EV)
 
-```
+EV% = (fair_odds / market_odds - 1) × 100
+
+```text
 EV% = (fair_odds / market_odds - 1) × 100
 ```
-
 - **Positive EV** = Profitable bet
 - **EV >= 1%** = Reported opportunity
 - **EV < 1%** = Filtered out
 
+
 ### Player Props Grouping
 
 Player props are isolated per player using a 5-tuple key:
-```
+(sport, event_id, market, point, player_name)
+
+```text
 (sport, event_id, market, point, player_name)
 ```
 
-This ensures each player's prop is evaluated independently with their own fair odds calculation (not mixed with other players).
+**ev_opportunities.csv** - EV opportunities above threshold
+- Columns: sport, event_id, market, player, selection, sharp_book_count, best_book, odds_decimal, fair_odds, ev_percent, stake, [bookmaker columns]
+- Sorted by EV% (highest first)
 
----
+### Internal
+- **seen_hits.json** - Deduplication hash storage (legacy system)
+- **api_usage.json** - API quota tracking
+- **cache_events.json** - Event caching
 
-## Data Files
-
-### Inputs
-- **raw_odds_pure.csv** - All odds across all sports/markets/bookmakers
-  - One row per market/selection with all bookmaker odds in columns
+```text
   - Used by calculate_opportunities.py
 
 ### Outputs

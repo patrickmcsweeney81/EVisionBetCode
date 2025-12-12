@@ -1,0 +1,16 @@
+# Production dependencies for EV ARB Bot
+# Generated from pyproject.toml for Render deployment
+# Last updated: December 12, 2025
+
+# Core dependencies
+requests>=2.32.0
+python-dateutil>=2.9.0
+python-dotenv>=1.0.0
+
+# FastAPI backend
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0

@@ -18,10 +18,10 @@ c:\EVisionBetCode\
 ├── .gitignore            # Git exclusions
 │
 ├── core/                  # EV Detection Modules
-│   ├── h2h_handler.py         # Moneyline EV
-│   ├── spreads_handler.py     # Spread EV
-│   ├── totals_handler.py      # Totals EV
-│   ├── player_props_handler.py # Player props
+│   ├── h2h.py                 # Moneyline EV
+│   ├── spreads.py             # Spread EV
+│   ├── totals.py              # Totals EV
+│   ├── player_props.py        # Player props
 │   ├── fair_prices.py         # Sharp bookmaker pricing
 │   ├── config.py              # Configuration
 │   └── logging.py             # CSV logging

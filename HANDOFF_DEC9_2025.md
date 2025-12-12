@@ -6,7 +6,7 @@
 1. **`C:\EVisionBetCode`** (Pipeline & Backend)
    - Core EV detection system; two-stage odds extraction + calculation
    - Python venv: `.venv`
-   - Key files: `pipeline_v2/raw_odds_pure.py`, `pipeline_v2/calculate_ev.py`
+   - Key files: `src/pipeline_v2/extract_odds.py`, `src/pipeline_v2/calculate_opportunities.py`
    - Data outputs: `data/raw_odds_pure.csv` (760 rows), `data/ev_opportunities.csv` (EV hits)
    - Sports: NBA (834 rows props), NFL (306 rows props), NHL (69 rows core)
 
@@ -38,8 +38,8 @@
 ## What Works (✅ Verified)
 
 ### Pipeline V2
-- **Stage 1 (raw_odds_pure.py):** Extracts odds from Odds API v4 → wide CSV (one row per market/selection, all bookmakers as columns).
-- **Stage 2 (calculate_ev.py):** Reads raw CSV → calculates fair odds from sharp books (Pinnacle, DK, FD, etc.) → outputs EV opportunities ≥ 1% edge.
+- **Stage 1 (extract_odds.py):** Extracts odds from Odds API v4 → wide CSV (one row per market/selection, all bookmakers as columns).
+- **Stage 2 (calculate_opportunities.py):** Reads raw CSV → calculates fair odds from sharp books (Pinnacle, DK, FD, etc.) → outputs EV opportunities ≥ 1% edge.
 - **Cost:** ~190 API credits per run (optimized: AU+US regions only, 2-way markets, time window filtering).
 - **Output:** `ev_opportunities.csv` with fair odds, EV%, implied probability, Kelly stakes.
 
@@ -56,7 +56,7 @@
 - 3⭐ (7 books): Betfair_AU, Betfair_UK, Betmgm, Betrivers, Betsson, Marathonbet, Lowvig - 40% weight
 - 2⭐ (4 books): Nordicbet, Mybookie, Betonline, Betus - 15% weight
 - 1⭐ (37 books): Target bookmakers (AU/US secondaries) - 10% weight
-- Created `pipeline_v2/bookmaker_ratings.py` with sport-specific weight profiles
+- Created `src/pipeline_v2/ratings.py` with sport-specific weight profiles
 
 **Fair Odds Calculation - CRITICAL BUG FIX:**
 - **Issue:** Fair odds were showing 1.1877 when they should be ~1.93 (calculation was using single weight total for both Over/Under sides)
@@ -77,10 +77,10 @@
 - **Result:** 7 missed EV opportunities now being detected (e.g., Mikal Bridges Under @Betr 2.40 vs fair 2.14 = +12.16%)
 
 **Outlier Test Tool (NEW):**
-- Created `pipeline_v2/outlier_test.py` - highlights AU books 3%+ above best sharp
+- Created `src/pipeline_v2/outlier_test.py` - highlights AU books 3%+ above best sharp
 - Output: `data/outlier_highlights.csv` with YELLOW flag column
 - Found 63 outlier opportunities, 7 of which are true EV opportunities
-- Created `pipeline_v2/check_outliers_ev.py` to validate outliers against fair odds engine
+- Created `src/pipeline_v2/check_outliers_ev.py` to validate outliers against fair odds engine
 
 ---
 
@@ -91,7 +91,7 @@
 **Impact:** 7 EV opportunities missed (Mikal Bridges +12.16%, Scottie Barnes +6.65%, etc.)
 **Current workaround:** `extract_sides()` now picks row with most bookmaker coverage
 **Permanent fix needed:**
-- **Option 1 (RECOMMENDED):** Deduplicate in `raw_odds_pure.py` - keep only latest timestamp per (event_id, market, point, selection)
+- **Option 1 (RECOMMENDED):** Deduplicate in `extract_odds.py` - keep only latest timestamp per (event_id, market, point, selection)
 - **Option 2:** Separate CSV per extraction with timestamp in filename
 - **Option 3:** Switch to database with proper schema (see database design below)
 
@@ -150,7 +150,7 @@ CREATE TABLE postgame_odds (
 ```
 
 **Pipeline Integration:**
-- `raw_odds_pure.py` writes to `live_odds` table (upsert by event_id+market+selection+bookmaker)
+- `extract_odds.py` writes to `live_odds` table (upsert by event_id+market+selection+bookmaker)
 - Detect line movement: if `ABS((new_odds - old_odds) / old_odds) > 0.05` → insert to `line_movements`
 - Cron job (every 5 min): `INSERT INTO postgame_odds SELECT * FROM live_odds WHERE commence_time < NOW()`
 - Cron job (hourly): `DELETE FROM postgame_odds WHERE expires_at < NOW()`
@@ -207,10 +207,10 @@ BETFAIR_COMMISSION=0.06
 & ".\.venv-1\Scripts\Activate.ps1"
 
 # Extract raw odds (~2 min, 190 credits)
-python pipeline_v2/raw_odds_pure.py
+python src/pipeline_v2/extract_odds.py
 
 # Calculate EV (instant, no API calls)
-python pipeline_v2/calculate_ev.py
+python src/pipeline_v2/calculate_opportunities.py
 
 # View sample data
 type data/ev_opportunities.csv | head -5
@@ -238,7 +238,7 @@ git push
 ## Critical Notes
 
 ### Sharps & Fair Prices (UPDATED DEC 10)
-- **52 bookmakers** with 1-4 star ratings (see `pipeline_v2/bookmaker_ratings.py`)
+- **52 bookmakers** with 1-4 star ratings (see `src/pipeline_v2/ratings.py`)
 - **Sharp books (3⭐+4⭐):** Pinnacle, Betfair_EU, Draftkings, Fanduel, Betfair_AU, Betfair_UK, Betmgm, Betrivers, Betsson, Marathonbet, Lowvig (11 total)
 - **Target books (1⭐):** Sportsbet, Pointsbet, Tab, Tabtouch, Betr, Neds, Boombet, plus 30 US/EU secondaries (37 total)
 - **Fair odds = weighted average** of sharp books (after devig + outlier removal) with 10% minimum weight coverage
@@ -288,7 +288,7 @@ Kelly stake = bankroll × kelly_fraction × edge / (odds - 1)
 
 - [ ] Open `C:\EVisionBetCode\project.code-workspace` in VS Code.
 - [ ] Activate `.venv-1` in Pipeline folder.
-- [ ] Run `python pipeline_v2/raw_odds_pure.py` to verify pipeline works.
+- [ ] Run `python src/pipeline_v2/extract_odds.py` to verify pipeline works.
 - [ ] Check `data/ev_opportunities.csv` row count (should have several hundred).
 - [ ] Start building FastAPI in `EVisionBetSite` (or ask for skeleton).
 - [ ] Wire front-end to API endpoint.
@@ -310,10 +310,10 @@ Kelly stake = bankroll × kelly_fraction × edge / (odds - 1)
 - `1250b27` - Update Copilot instructions with bookmaker ratings and bug fix
 
 ## Files Added/Modified (Dec 10)
-- `pipeline_v2/bookmaker_ratings.py` (NEW) - 52 bookmakers with 1-4 star ratings, sport profiles
-- `pipeline_v2/calculate_ev.py` (MODIFIED) - Fixed fair odds bug, updated extract_sides() for duplicate handling
-- `pipeline_v2/outlier_test.py` (NEW) - Detects AU books 3%+ above sharps
-- `pipeline_v2/check_outliers_ev.py` (NEW) - Validates outliers with fair odds engine
+- `src/pipeline_v2/ratings.py` (NEW) - 52 bookmakers with 1-4 star ratings, sport profiles
+- `src/pipeline_v2/calculate_opportunities.py` (MODIFIED) - Fixed fair odds bug, updated extract_sides() for duplicate handling
+- `src/pipeline_v2/outlier_test.py` (NEW) - Detects AU books 3%+ above sharps
+- `src/pipeline_v2/check_outliers_ev.py` (NEW) - Validates outliers with fair odds engine
 - `docs/BUGFIX_FAIR_ODDS_DEC10_2025.md` (NEW) - Critical bug fix documentation
 - `docs/FAIR_ODDS_CALCULATION.md` (NEW) - Methodology documentation
 - `.github/copilot-instructions.md` (UPDATED) - Latest system changes

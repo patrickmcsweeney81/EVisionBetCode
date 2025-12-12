@@ -1,9 +1,77 @@
+
 # EV_ARB Bot – Sports Betting Expected Value Finder
+
+---
+
+## Deployment & Onboarding
+
+This is the **backend-only** repo for the EV_ARB Bot (API, pipeline, and docs).
+
+### 🚀 Deploy on Render
+
+
+
+
+
+1. **Create a new Render web service**
+
+  - Use this repo and the included `render.yaml` (auto-detects services)
+
+2. **Set environment variables** in Render dashboard:
+
+  - `ODDS_API_KEY` (required)
+  - `DATABASE_URL` (optional, for DB features)
+  - `ADMIN_PASSWORD_HASH` (for admin endpoints)
+
+3. **No manual build steps needed** – Render uses `render.yaml` for all jobs and API
+
+
+See the top of `render.yaml` for service descriptions.
+
+---
+
+## Local Development
+
+
+
+
+
+1. `make dev-install` or `pip install -e ".[dev]"`
+
+2. Add a `.env` file with your API key and config
+
+3. Run the pipeline:
+
+  - `python src/pipeline_v2/extract_odds.py`
+  - `python src/pipeline_v2/calculate_opportunities.py`
+
+4. Start the API locally:
+
+  - `uvicorn backend_api:app --reload`
+
+5. Run tests/lint/type-check:
+
+  - `make test`, `make lint`, `make format`, `make type-check`
+
+
+---
+
+## Project Structure
+
+- `src/pipeline_v2/` – Two-stage pipeline (extract, calculate)
+- `backend_api.py` – FastAPI backend
+- `data/` – Output files (gitignored)
+- `render.yaml` – Render deployment config (web + cron jobs)
+- `README.md` – This file
+- `docs/` – Architecture, bugfix, and usage docs
+
+---
 
 **Current Version:** Pipeline V2 (Production)  
 **Last Updated:** December 9, 2025
 
 ---
+
 
 ## Overview
 
@@ -15,7 +83,8 @@ EV_ARB Bot scans sports betting odds across multiple bookmakers and identifies *
 
 ## Quick Start
 
-# Option 1: Full Pipeline (Recommended)
+
+## Option 1: Full Pipeline (Recommended)
 
 ```bash
 # Stage 1: Extract raw odds (costs ~194 API credits)
@@ -25,9 +94,11 @@ python pipeline_v2/raw_odds_pure.py
 python pipeline_v2/calculate_ev.py
 ```
 
-# Output: `data/ev_opportunities.csv` with all EV opportunities
 
-### Option 2: Legacy System
+**Output:** `data/ev_opportunities.csv` with all EV opportunities
+
+
+## Option 2: Legacy System
 
 ```bash
 # All-in-one (legacy, costs ~1,000+ API credits)
@@ -64,12 +135,13 @@ The Odds API
     ↓
 [calculate_opportunities.py] → ev_opportunities.csv
 
+
 ```text
 The Odds API
   ↓
-[extract_odds.py] → raw_odds_pure.csv
+  [extract_odds.py] → raw_odds_pure.csv
   ↓
-[calculate_opportunities.py] → ev_opportunities.csv
+  [calculate_opportunities.py] → ev_opportunities.csv
 ```
 
 
@@ -87,7 +159,8 @@ The Odds API
 
 ---
 
-# Configuration
+
+## Configuration (.env)
 
 All settings are controlled via the `.env` file:
 
@@ -114,6 +187,9 @@ BETFAIR_COMMISSION=0.06                   # 6% commission adjustment
 BANKROLL=1000
 KELLY_FRACTION=0.25
 ```
+
+---
+
 
 ---
 
@@ -187,6 +263,9 @@ Player props are isolated per player using a 5-tuple key:
 
 ---
 
+
+---
+
 ## Sports & Markets
 
 ### Supported Sports
@@ -211,6 +290,9 @@ Player props are isolated per player using a 5-tuple key:
 
 ---
 
+
+---
+
 ## File Cleanup (Dec 9, 2025)
 
 The following temporary/debug files have been removed:
@@ -223,7 +305,10 @@ The following temporary/debug files have been removed:
 
 ---
 
-## Troubleshooting
+
+---
+
+## Support & Troubleshooting
 
 ### No EV Opportunities Found
 - Ensure `.env` has valid `ODDS_API_KEY`
@@ -238,6 +323,9 @@ The following temporary/debug files have been removed:
 - Check `data/api_usage.json` for remaining credits
 - Wait before next run, or upgrade API tier
 - Pipeline V2 uses ~194 credits per run vs ~1,000 for legacy
+
+---
+
 
 ---
 
@@ -257,6 +345,9 @@ Edit `calculate_opportunities.py`:
 
 ---
 
+
+---
+
 ## Contact & Support
 
 - **Primary API:** The Odds API v4
@@ -269,9 +360,15 @@ For questions, refer to:
 - `docs/TWO_STAGE_PIPELINE.md` - Architecture documentation
 - `docs/RAW_ODDS_EXTRACTION.md` - Extraction specifics
 
+
+---
+
 ## License
 
 ISC
+
+---
+
 
 ---
 

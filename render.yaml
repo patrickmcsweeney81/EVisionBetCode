@@ -18,7 +18,7 @@ services:
     rootDir: .
     schedule: "*/30 * * * *"
     buildCommand: pip install -r requirements.txt
-    startCommand: bash -c 'export PYTHONPATH=/opt/render/project/src:$PYTHONPATH && cd /opt/render/project && python -u src/pipeline_v2/extract_odds.py'
+    startCommand: python -u src/pipeline_v2/extract_odds.py
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -34,7 +34,7 @@ services:
     rootDir: .
     schedule: "*/35 * * * *"
     buildCommand: pip install -r requirements.txt
-    startCommand: bash -c 'export PYTHONPATH=/opt/render/project/src:$PYTHONPATH && cd /opt/render/project && python -u src/pipeline_v2/calculate_opportunities.py'
+    startCommand: python -u src/pipeline_v2/calculate_opportunities.py
     envVars:
       - key: DATABASE_URL
         sync: false

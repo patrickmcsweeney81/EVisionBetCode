@@ -3,21 +3,23 @@ FastAPI backend service for EV_ARB Bot
 Exposes PostgreSQL data to frontend via REST API
 Runs on Render as a Web Service (not cron job)
 """
-
-import csv
-import hashlib
-import json
-import os
 from datetime import datetime
-from io import StringIO
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text, create_engine, text
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Float,
+    Integer,
+    String,
+    create_engine,
+    text,
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -374,7 +376,7 @@ async def health_check():
 
 
 @app.get("/")
-async def root():
+async def root_endpoint():  # Renamed from 'root' to avoid redefinition
     """Root endpoint."""
     return {"message": "EV_ARB API v2.0", "docs": "/docs"}
 

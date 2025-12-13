@@ -111,10 +111,10 @@ def test_weight_scale_consistency():
                 assert 0 <= weight <= 4
 
 
-def test_bookmaker_ratings():
-    """Test ratings are defined."""
-    from src.pipeline_v2.ratings import BOOKMAKER_RATINGS
+"""Test bookmaker ratings."""
+from pipeline_v2.ratings import BOOKMAKER_RATINGS
 
-    assert len(BOOKMAKER_RATINGS) > 0
-    assert BOOKMAKER_RATINGS.get("pinnacle") == 4  # 4-star
-    assert BOOKMAKER_RATINGS.get("draftkings") == 3  # 3-star
+
+def test_bookmaker_ratings():
+    assert BOOKMAKER_RATINGS.get("pinnacle") == 4
+    assert BOOKMAKER_RATINGS.get("draftkings") == 3

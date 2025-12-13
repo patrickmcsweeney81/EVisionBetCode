@@ -21,6 +21,9 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
+import pandas as pd
+from sqlalchemy import create_engine
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Load environment - look for .env in project root
 env_paths = [
@@ -69,7 +72,9 @@ RAW_CSV = DATA_DIR / "raw_odds_pure.csv"
 
 # API Configuration
 ODDS_API_HOST = "https://api.the-odds-api.com"
-SPORTS = ["basketball_nba", "americanfootball_nfl", "icehockey_nhl", "basketball_nbl", "soccer_epl", "cricket_big_bash"]  # Can add more
+# Sports list - reads from SPORTS env var (comma-separated), or uses default
+DEFAULT_SPORTS = "basketball_nba,basketball_nbl,americanfootball_nfl,americanfootball_ncaaf,icehockey_nhl,baseball_mlb,soccer_epl,soccer_uefa_champs_league,tennis_atp,tennis_wta,cricket_big_bash,cricket_ipl"
+SPORTS = [s.strip() for s in os.getenv("SPORTS", DEFAULT_SPORTS).split(",")]
 # Include EU to ensure Pinnacle is returned by The Odds API
 # Cost note: adding EU increases credits vs au,us only
 REGIONS = os.getenv("REGIONS", "au,us,eu")
@@ -596,7 +601,7 @@ def filter_rows_by_dk_fd(rows: List[Dict], verbose: bool = False) -> List[Dict]:
 
 
 def append_to_csv(rows: List[Dict]):
-    """Append rows to CSV file."""
+    """Append rows to CSV file and database (if DATABASE_URL set)."""
     if not rows:
         print("[!] No rows to write")
         return
@@ -619,6 +624,7 @@ def append_to_csv(rows: List[Dict]):
     final_headers = BASE_HEADERS + ordered_bookies
     file_exists = RAW_CSV.exists()
     
+    csv_success = False
     try:
         with open(RAW_CSV, "a", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=final_headers)
@@ -630,6 +636,7 @@ def append_to_csv(rows: List[Dict]):
             
             writer.writerows(rows)
             print(f"[CSV] Appended {len(rows)} rows")
+            csv_success = True
             
     except PermissionError as e:
         fallback = DATA_DIR / f"raw_odds_pure_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}.csv"
@@ -639,14 +646,70 @@ def append_to_csv(rows: List[Dict]):
                 writer.writeheader()
                 writer.writerows(rows)
             print(f"[CSV] Primary file locked; wrote to {fallback}")
+            csv_success = True
         except Exception as inner:
             print(f"[!] Error writing fallback CSV: {inner}")
     except Exception as e:
         print(f"[!] Error writing CSV: {e}")
+    
+    # =========================================================================
+    # DATABASE WRITE (fallback + redundancy)
+    # =========================================================================
+    db_url = os.getenv("DATABASE_URL")
+    if db_url:
+        try:
+            df = pd.DataFrame(rows)
+            engine = create_engine(db_url)
+            df.to_sql(
+                "raw_odds_pure",
+                engine,
+                if_exists="append",
+                index=False,
+                method="multi",
+                chunksize=1000
+            )
+            print(f"[OK] {len(rows)} rows written to database (raw_odds_pure)")
+        except Exception as e:
+            print(f"[!] Database write failed: {e}")
+            if not csv_success:
+                print(f"[!] WARNING: Data loss – neither CSV nor database write succeeded")
+    else:
+        if csv_success:
+            print(f"[OK] DATABASE_URL not set – CSV output saved")
+        else:
+            print(f"[!] WARNING: No local storage AND no DATABASE_URL – data not persisted")
+
+
+def process_sport(sport_key: str, timestamp: str) -> List[Dict]:
+    """Fetch and process a single sport (for parallel execution)."""
+    print(f"\n=== {sport_key.upper()} ===")
+    
+    core_markets = ['h2h', 'spreads', 'totals']
+    print(f"[API] Fetching core markets: {core_markets}")
+    
+    events = fetch_raw_odds(sport_key, core_markets)
+    if not events:
+        print(f"[!] No events for {sport_key}")
+        return []
+    
+    print(f"[OK] Got {len(events)} core market events")
+    
+    print(f"[*] Fetching player props...")
+    events_with_props = fetch_player_props(sport_key, events)
+    
+    rows = expand_to_rows(events_with_props, timestamp)
+    print(f"[OK] Expanded to {len(rows)} rows")
+    
+    # Filter to only rows with DK+FD coverage
+    rows_filtered = filter_rows_by_dk_fd(rows, verbose=True)
+    removed = len(rows) - len(rows_filtered)
+    print(f"[OK] Filtered to {len(rows_filtered)} rows (removed {removed} without DK+FD)")
+    
+    return rows_filtered
 
 
 def main():
-    """Main extraction flow."""
+    """Main extraction flow with parallel sport fetching."""
     
     # Debug output
     print(f"[DEBUG] Script location: {Path(__file__).resolve()}")
@@ -665,31 +728,24 @@ def main():
     timestamp = datetime.now(timezone.utc).isoformat()
     all_rows = []
     
-    for sport_key in SPORTS:
-        print(f"\n=== {sport_key.upper()} ===")
+    # Fetch all sports in parallel (4-5 concurrent threads)
+    print(f"\n[PARALLEL] Fetching {len(SPORTS)} sports concurrently...")
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        # Submit all sports at once
+        futures = {
+            executor.submit(process_sport, sport_key, timestamp): sport_key
+            for sport_key in SPORTS
+        }
         
-        core_markets = ['h2h', 'spreads', 'totals']
-        print(f"[API] Fetching core markets: {core_markets}")
-        
-        events = fetch_raw_odds(sport_key, core_markets)
-        if not events:
-            print(f"[!] No events for {sport_key}")
-            continue
-        
-        print(f"[OK] Got {len(events)} core market events")
-        
-        print(f"[*] Fetching player props...")
-        events_with_props = fetch_player_props(sport_key, events)
-        
-        rows = expand_to_rows(events_with_props, timestamp)
-        print(f"[OK] Expanded to {len(rows)} rows")
-        
-        # Filter to only rows with DK+FD coverage
-        rows_filtered = filter_rows_by_dk_fd(rows, verbose=True)
-        removed = len(rows) - len(rows_filtered)
-        print(f"[OK] Filtered to {len(rows_filtered)} rows (removed {removed} without DK+FD)")
-        
-        all_rows.extend(rows_filtered)
+        # Collect results as they complete
+        for future in as_completed(futures):
+            sport_key = futures[future]
+            try:
+                rows = future.result()
+                all_rows.extend(rows)
+                print(f"[OK] {sport_key} complete: {len(rows)} rows added")
+            except Exception as e:
+                print(f"[!] {sport_key} failed: {e}")
     
     append_to_csv(all_rows)
     

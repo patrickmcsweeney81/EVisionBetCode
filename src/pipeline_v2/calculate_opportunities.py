@@ -64,25 +64,36 @@ load_dotenv(dotenv_path=env_path)
 # File locations - use absolute paths for reliability
 # Try multiple locations to support both local and Render deployments
 def get_data_dir():
-    """Find data directory - supports local and Render deployments"""
-    # Option 1: Relative to script location (most common)
-    script_parent = Path(__file__).parent.parent
-    if (script_parent / "data").exists():
-        return script_parent / "data"
-    
-    # Option 2: Current working directory (Render cron jobs)
+    """Find data directory - robust for Render and local dev."""
     cwd = Path.cwd()
-    if (cwd / "data").exists():
-        return cwd / "data"
     
-    # Option 3: Check if we're in /src subdirectory
-    if "src" in str(cwd):
-        parent = cwd.parent
-        if (parent / "data").exists():
-            return parent / "data"
+    # Strip duplicate /src/src patterns (Render issue)
+    cwd_str = str(cwd).replace("\\src\\src", "\\src").replace("/src/src", "/src")
+    cwd = Path(cwd_str)
     
-    # Default fallback
-    return script_parent / "data"
+    # Priority 1: cwd/data (Render: /opt/render/project/src/data)
+    data_path = cwd / "data"
+    data_path.mkdir(parents=True, exist_ok=True)
+    if data_path.exists() and data_path.is_dir():
+        return data_path
+    
+    # Priority 2: parent/data if cwd is /src
+    if cwd.name == "src":
+        data_path = cwd.parent / "data"
+        data_path.mkdir(parents=True, exist_ok=True)
+        if data_path.exists() and data_path.is_dir():
+            return data_path
+    
+    # Priority 3: script parent (pipeline_v2 → src → data)
+    script_parent = Path(__file__).parent.parent
+    data_path = script_parent / "data"
+    data_path.mkdir(parents=True, exist_ok=True)
+    if data_path.exists() and data_path.is_dir():
+        return data_path
+    
+    # Fallback
+    return cwd / "data"
+
 
 DATA_DIR = get_data_dir()
 RAW_CSV = DATA_DIR / "raw_odds_pure.csv"
@@ -194,8 +205,28 @@ def kelly_stake(bankroll: float, fair_odds: float, bet_odds: float, kelly_frac: 
 
 
 def read_raw_odds() -> List[Dict]:
-    """Read raw odds CSV."""
-    # Ensure data directory exists
+    """Read raw odds from database (primary) or CSV (fallback)."""
+    db_url = os.getenv("DATABASE_URL")
+    
+    # Priority 1: Read from database
+    if db_url:
+        try:
+            print(f"[DB] Reading raw odds from database table: raw_odds_pure")
+            engine = create_engine(db_url)
+            df = pd.read_sql("SELECT * FROM raw_odds_pure ORDER BY timestamp DESC", engine)
+            if len(df) > 0:
+                rows = df.to_dict("records")
+                print(f"[OK] Read {len(rows)} rows from database (raw_odds_pure)")
+                return rows
+            else:
+                print(f"[!] Database table raw_odds_pure is empty")
+        except Exception as e:
+            print(f"[!] Database read failed: {e}")
+            print(f"[!] Falling back to CSV...")
+    else:
+        print(f"[!] DATABASE_URL not set, using CSV fallback")
+    
+    # Fallback: Read from CSV
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     
     if not RAW_CSV.exists():
@@ -216,7 +247,7 @@ def read_raw_odds() -> List[Dict]:
             reader = csv.DictReader(f)
             for row in reader:
                 rows.append(row)
-        print(f"[OK] Read {len(rows)} rows from {RAW_CSV}")
+        print(f"[OK] Read {len(rows)} rows from CSV: {RAW_CSV}")
         return rows
     except Exception as e:
         print(f"[!] Error reading CSV: {e}")

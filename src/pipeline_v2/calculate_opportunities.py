@@ -17,6 +17,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import Column, DateTime, Float, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
+from pipeline_v2.ratings import BOOKMAKER_RATINGS, get_sport_weight  # keep only needed
 
 # Add script directory to Python path for relative imports (needed for Render cron jobs)
 SCRIPT_DIR = Path(__file__).parent
@@ -25,7 +26,6 @@ if str(SCRIPT_DIR) not in sys.path:
 
 # Import bookmaker ratings & weighting
 from ratings import (
-    BOOKMAKER_RATINGS,
     calculate_book_weight,
     get_sharp_books_only,
     get_target_books_only,
@@ -384,8 +384,6 @@ def fair_from_sharps(
     Returns:
         Fair odds (float) or None if <2 sharp books
     """
-    from .ratings import BOOKMAKER_RATINGS, get_sport_weight
-
     if len(sharp_books) < 2:
         return None
 
@@ -581,7 +579,7 @@ def write_opportunities(opportunities: List[Dict], headers: List[str]):
                         row[col] = val if val else ""
                 writer.writerow(row)
 
-        print(f"[OK] Wrote {len(opportunities)} opportunities to {EV_CSV}")
+        print(f"✅ Wrote {len(opportunities)} EV rows to {EV_CSV}")
     except Exception as e:
         print(f"[!] Error writing CSV: {e}")
 

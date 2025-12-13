@@ -3,6 +3,7 @@ FastAPI backend service for EV_ARB Bot
 Exposes PostgreSQL data to frontend via REST API
 Runs on Render as a Web Service (not cron job)
 """
+
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional

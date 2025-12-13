@@ -4,24 +4,26 @@ Exposes PostgreSQL data to frontend via REST API
 Runs on Render as a Web Service (not cron job)
 """
 
-import os
-import json
 import csv
 import hashlib
-from io import StringIO
+import json
+import os
 from datetime import datetime
+from io import StringIO
+from pathlib import Path
 from typing import List, Optional
-from fastapi import FastAPI, Query, HTTPException, Header
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from sqlalchemy import create_engine, Column, String, Float, DateTime, Integer, Text, Boolean, text
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text, create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
-from pathlib import Path
 
 # Load environment variables
 load_dotenv()
+
 
 # Locate data directory (mirrors pipeline get_data_dir)
 def get_data_dir():
@@ -54,6 +56,7 @@ def get_data_dir():
     # Fallback
     return cwd / "data"
 
+
 DATA_DIR = get_data_dir()
 EV_CSV = DATA_DIR / "ev_opportunities.csv"
 RAW_CSV = DATA_DIR / "raw_odds_pure.csv"
@@ -64,12 +67,14 @@ RAW_CSV = DATA_DIR / "raw_odds_pure.csv"
 
 ADMIN_PASSWORD_HASH = os.getenv(
     "ADMIN_PASSWORD_HASH",
-    hashlib.sha256("admin123".encode()).hexdigest()  # Default: hashed "admin123"
+    hashlib.sha256("admin123".encode()).hexdigest(),  # Default: hashed "admin123"
 )
+
 
 def verify_admin_password(password: str) -> bool:
     """Verify admin password"""
     return hashlib.sha256(password.encode()).hexdigest() == ADMIN_PASSWORD_HASH
+
 
 # ============================================================================
 # DATABASE SETUP
@@ -98,8 +103,10 @@ Base = declarative_base()
 # DATABASE MODELS
 # ============================================================================
 
+
 class LiveOdds(Base):
     """Raw odds from all bookmakers"""
+
     __tablename__ = "live_odds"
 
     id = Column(Integer, primary_key=True)
@@ -131,6 +138,7 @@ class LiveOdds(Base):
 
 class EVOpportunity(Base):
     """EV opportunities above threshold"""
+
     __tablename__ = "ev_opportunities"
 
     id = Column(Integer, primary_key=True)
@@ -183,6 +191,7 @@ class EVOpportunity(Base):
 
 class PriceHistory(Base):
     """Historical odds archive - enables line movement tracking"""
+
     __tablename__ = "price_history"
 
     id = Column(Integer, primary_key=True)
@@ -215,6 +224,7 @@ class PriceHistory(Base):
 
 class LineMovement(Base):
     """Line movements - price changes between extractions (GREEN/RED alerts)"""
+
     __tablename__ = "line_movements"
 
     id = Column(Integer, primary_key=True)
@@ -227,23 +237,23 @@ class LineMovement(Base):
     selection = Column(String, nullable=False)
     player_name = Column(String)
     bookmaker = Column(String, nullable=False)
-    
+
     # Price data
     old_odds = Column(Float)
     old_extracted_at = Column(DateTime)
     new_odds = Column(Float, nullable=False)
     new_extracted_at = Column(DateTime, nullable=False)
-    
+
     # Deltas
     price_change = Column(Float)
     price_change_percent = Column(Float)
-    
+
     # Classification
     movement_type = Column(String)  # 'DOWN' (Green), 'UP' (Red), 'SAME'
     movement_percent = Column(Float)
     is_significant = Column(Boolean, default=False)
     significance_level = Column(String)  # 'MINOR', 'MODERATE', 'MAJOR'
-    
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -258,7 +268,9 @@ class LineMovement(Base):
             "old_odds": round(self.old_odds, 4) if self.old_odds else None,
             "new_odds": round(self.new_odds, 4) if self.new_odds else None,
             "price_change": round(self.price_change, 4) if self.price_change else None,
-            "price_change_percent": round(self.price_change_percent, 2) if self.price_change_percent else None,
+            "price_change_percent": (
+                round(self.price_change_percent, 2) if self.price_change_percent else None
+            ),
             "movement_type": self.movement_type,  # 'DOWN' (Green), 'UP' (Red)
             "is_significant": self.is_significant,
             "significance_level": self.significance_level,
@@ -268,6 +280,7 @@ class LineMovement(Base):
 
 class PropAlert(Base):
     """Player prop alerts - high-value prop opportunities"""
+
     __tablename__ = "prop_alerts"
 
     id = Column(Integer, primary_key=True)
@@ -275,33 +288,33 @@ class PropAlert(Base):
     sport = Column(String, nullable=False)
     event_id = Column(String, nullable=False)
     commence_time = Column(DateTime)
-    
+
     # Player
     player_name = Column(String, nullable=False)
     player_id = Column(String)
-    
+
     # Prop details
     prop_market = Column(String, nullable=False)  # 'player_points', 'player_assists', etc.
     prop_line = Column(Float)
-    
+
     # Odds
     over_odds = Column(Float)
     under_odds = Column(Float)
     best_side = Column(String)  # 'OVER' or 'UNDER'
     best_book = Column(String)
-    
+
     # EV
     ev_percent = Column(Float)
     implied_prob = Column(Float)
-    
+
     # Alert type
     alert_type = Column(String)  # 'HIGH_EV', 'LINE_MOVE', 'SHARP_SIGNAL', 'NEW_PROP'
     severity = Column(String)  # 'LOW', 'MEDIUM', 'HIGH'
-    
+
     # Status
     is_active = Column(Boolean, default=True)
     closed_at = Column(DateTime)
-    
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -330,55 +343,44 @@ class PropAlert(Base):
 app = FastAPI(
     title="EV_ARB Bot API",
     description="Sports betting expected value finder backend",
-    version="1.0.0"
+    version="2.0",
 )
 
 # Enable CORS for frontend communication
+origins = [
+    "http://localhost:3000",  # Local React dev
+    "http://localhost:5173",  # Vite dev server
+    "https://evisionbet.com",
+    "https://www.evisionbet.com",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ============================================================================
-# HEALTH CHECK ENDPOINT
-# ============================================================================
-
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    if not SessionLocal:
-        return {
-            "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
-            "database": "not_configured",
-            "data_source": "csv"
-        }
+    """Health check endpoint for Render."""
+    return {
+        "status": "healthy",
+        "version": "2.0",
+        "database": "connected" if os.getenv("DATABASE_URL") else "csv_fallback"
+    }
 
-    session = SessionLocal()
-    try:
-        # Simple DB connectivity probe
-        session.execute(text("SELECT 1"))
-        return {
-            "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
-            "database": "connected"
-        }
-    except Exception as e:
-        return {
-            "status": "unhealthy",
-            "timestamp": datetime.utcnow().isoformat(),
-            "database": "disconnected",
-            "error": str(e)
-        }
-    finally:
-        session.close()
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {"message": "EV_ARB API v2.0", "docs": "/docs"}
+
 
 # ============================================================================
 # EV HITS ENDPOINTS
 # ============================================================================
+
 
 @app.get("/api/ev/hits")
 async def get_ev_hits(
@@ -389,12 +391,13 @@ async def get_ev_hits(
 ):
     """
     Get EV opportunities filtered by criteria
-    
+
     Args:
         limit: Max results (default 50)
         min_ev: Minimum EV as decimal (default 0.01 = 1%)
         sport: Filter by sport (basketball_nba, americanfootball_nfl, etc.)
     """
+
     def csv_fallback():
         # Read from ev_opportunities.csv when database is unavailable or empty
         if not EV_CSV.exists():
@@ -430,36 +433,38 @@ async def get_ev_hits(
                     best_odds_val = parse_float(row.get("best_odds"))
                     if best_odds_val is None:
                         best_odds_val = parse_float(row.get("odds_decimal"))
-                    rows.append({
-                        "sport": row.get("sport"),
-                        "event_id": row.get("event_id"),
-                        "away_team": row.get("away_team"),
-                        "home_team": row.get("home_team"),
-                        "commence_time": row.get("commence_time"),
-                        "market": row.get("market"),
-                        "point": parse_float(row.get("point")),
-                        "selection": row.get("selection"),
-                        "player": row.get("player"),
-                        "fair_odds": parse_float(row.get("fair_odds")),
-                        "best_book": best_book_val,
-                        "best_odds": best_odds_val,
-                        "ev_percent": ev_val,
-                        "sharp_book_count": int(parse_float(row.get("sharp_book_count")) or 0),
-                        "implied_prob": parse_float(row.get("implied_prob")),
-                        "stake": parse_float(row.get("stake")),
-                        "kelly_fraction": parse_float(row.get("kelly_fraction")),
-                        "detected_at": row.get("detected_at"),
-                        "created_at": row.get("created_at"),
-                        # Aliases for backward compatibility with frontend
-                        "bookmaker": best_book_val,
-                        "odds_decimal": best_odds_val,
-                    })
+                    rows.append(
+                        {
+                            "sport": row.get("sport"),
+                            "event_id": row.get("event_id"),
+                            "away_team": row.get("away_team"),
+                            "home_team": row.get("home_team"),
+                            "commence_time": row.get("commence_time"),
+                            "market": row.get("market"),
+                            "point": parse_float(row.get("point")),
+                            "selection": row.get("selection"),
+                            "player": row.get("player"),
+                            "fair_odds": parse_float(row.get("fair_odds")),
+                            "best_book": best_book_val,
+                            "best_odds": best_odds_val,
+                            "ev_percent": ev_val,
+                            "sharp_book_count": int(parse_float(row.get("sharp_book_count")) or 0),
+                            "implied_prob": parse_float(row.get("implied_prob")),
+                            "stake": parse_float(row.get("stake")),
+                            "kelly_fraction": parse_float(row.get("kelly_fraction")),
+                            "detected_at": row.get("detected_at"),
+                            "created_at": row.get("created_at"),
+                            # Aliases for backward compatibility with frontend
+                            "bookmaker": best_book_val,
+                            "odds_decimal": best_odds_val,
+                        }
+                    )
                 except Exception:
                     continue
         # Sort by ev_percent desc and apply offset/limit
         rows = sorted(rows, key=lambda r: r.get("ev_percent", 0), reverse=True)
         total = len(rows)
-        rows = rows[offset:offset + limit]
+        rows = rows[offset : offset + limit]
         return rows, total
 
     try:
@@ -468,7 +473,11 @@ async def get_ev_hits(
             hits, total_count = csv_fallback()
             last_updated = None
             if hits:
-                timestamps = [h.get("detected_at") or h.get("created_at") for h in hits if h.get("detected_at") or h.get("created_at")]
+                timestamps = [
+                    h.get("detected_at") or h.get("created_at")
+                    for h in hits
+                    if h.get("detected_at") or h.get("created_at")
+                ]
                 if timestamps:
                     last_updated = max(timestamps)
             return {
@@ -476,35 +485,32 @@ async def get_ev_hits(
                 "count": len(hits),
                 "total_count": total_count,
                 "last_updated": last_updated or datetime.utcnow().isoformat(),
-                "filters": {
-                    "limit": limit,
-                    "offset": offset,
-                    "min_ev": min_ev,
-                    "sport": sport
-                }
+                "filters": {"limit": limit, "offset": offset, "min_ev": min_ev, "sport": sport},
             }
 
         session = SessionLocal()
-        
+
         # Build query
-        query = session.query(EVOpportunity).filter(
-            EVOpportunity.ev_percent >= min_ev
-        )
-        
+        query = session.query(EVOpportunity).filter(EVOpportunity.ev_percent >= min_ev)
+
         # Apply sport filter if provided
         if sport:
             query = query.filter(EVOpportunity.sport == sport)
-        
+
         # Order by EV descending, limit results
         hits = query.order_by(EVOpportunity.ev_percent.desc()).offset(offset).limit(limit).all()
-        
+
         # If database empty, fallback to CSV
         if not hits:
             session.close()
             hits_csv, total_count = csv_fallback()
             last_updated = None
             if hits_csv:
-                timestamps = [h.get("detected_at") or h.get("created_at") for h in hits_csv if h.get("detected_at") or h.get("created_at")]
+                timestamps = [
+                    h.get("detected_at") or h.get("created_at")
+                    for h in hits_csv
+                    if h.get("detected_at") or h.get("created_at")
+                ]
                 if timestamps:
                     last_updated = max(timestamps)
             return {
@@ -512,41 +518,31 @@ async def get_ev_hits(
                 "count": len(hits_csv),
                 "total_count": total_count,
                 "last_updated": last_updated or datetime.utcnow().isoformat(),
-                "filters": {
-                    "limit": limit,
-                    "offset": offset,
-                    "min_ev": min_ev,
-                    "sport": sport
-                }
+                "filters": {"limit": limit, "offset": offset, "min_ev": min_ev, "sport": sport},
             }
-        
+
         # Get summary stats (still in DB path; optional)
         all_hits = session.query(EVOpportunity).all()
         session.close()
-        
+
         last_updated = None
         if hits:
             last_updated = max((h.detected_at or h.created_at) for h in hits).isoformat()
-        
+
         return {
             "hits": [h.to_dict() for h in hits],
             "count": len(hits),
             "total_count": len(all_hits),
             "last_updated": last_updated or datetime.utcnow().isoformat(),
-            "filters": {
-                "limit": limit,
-                "offset": offset,
-                "min_ev": min_ev,
-                "sport": sport
-            }
+            "filters": {"limit": limit, "offset": offset, "min_ev": min_ev, "sport": sport},
         }
-    
+
     except Exception as e:
         return {
             "error": str(e),
             "hits": [],
             "count": 0,
-            "last_updated": datetime.utcnow().isoformat()
+            "last_updated": datetime.utcnow().isoformat(),
         }
 
 
@@ -561,7 +557,7 @@ async def get_ev_summary():
                     "total_hits": 0,
                     "top_ev": 0,
                     "sports": {},
-                    "last_updated": datetime.utcnow().isoformat()
+                    "last_updated": datetime.utcnow().isoformat(),
                 }
 
             rows = []
@@ -580,7 +576,7 @@ async def get_ev_summary():
                     "total_hits": 0,
                     "top_ev": 0,
                     "sports": {},
-                    "last_updated": datetime.utcnow().isoformat()
+                    "last_updated": datetime.utcnow().isoformat(),
                 }
 
             sports_dict = {}
@@ -611,45 +607,45 @@ async def get_ev_summary():
             }
 
         session = SessionLocal()
-        
+
         # Query all EV opportunities
         all_hits = session.query(EVOpportunity).all()
-        
+
         if not all_hits:
             return {
                 "available": False,
                 "total_hits": 0,
                 "top_ev": 0,
                 "sports": {},
-                "last_updated": datetime.utcnow().isoformat()
+                "last_updated": datetime.utcnow().isoformat(),
             }
-        
+
         # Calculate summary stats
         sports_dict = {}
         top_ev = 0
-        
+
         for hit in all_hits:
             # Count by sport
             if hit.sport not in sports_dict:
                 sports_dict[hit.sport] = 0
             sports_dict[hit.sport] += 1
-            
+
             # Track highest EV
             if hit.ev_percent > top_ev:
                 top_ev = hit.ev_percent
 
         last_updated = max((h.detected_at or h.created_at) for h in all_hits).isoformat()
-        
+
         session.close()
-        
+
         return {
             "available": True,
             "total_hits": len(all_hits),
             "top_ev": round(top_ev, 2),
             "sports": sports_dict,
-            "last_updated": last_updated
+            "last_updated": last_updated,
         }
-    
+
     except Exception as e:
         return {
             "available": False,
@@ -657,13 +653,14 @@ async def get_ev_summary():
             "total_hits": 0,
             "top_ev": 0,
             "sports": {},
-            "last_updated": datetime.utcnow().isoformat()
+            "last_updated": datetime.utcnow().isoformat(),
         }
 
 
 # ============================================================================
 # ODDS ENDPOINTS
 # ============================================================================
+
 
 @app.get("/api/odds/latest")
 async def get_latest_odds(
@@ -673,7 +670,7 @@ async def get_latest_odds(
 ):
     """
     Get latest odds for all or specific markets
-    
+
     Args:
         limit: Max results (default 500)
         sport: Filter by sport
@@ -685,40 +682,40 @@ async def get_latest_odds(
                 "error": "database_not_configured",
                 "odds": [],
                 "count": 0,
-                "last_updated": datetime.utcnow().isoformat()
+                "last_updated": datetime.utcnow().isoformat(),
             }
 
         session = SessionLocal()
-        
+
         # Build query - get most recent odds per selection
         query = session.query(LiveOdds)
-        
+
         if sport:
             query = query.filter(LiveOdds.sport == sport)
         if event_id:
             query = query.filter(LiveOdds.event_id == event_id)
-        
+
         # Order by extraction time and limit
-        odds = query.order_by(
-            LiveOdds.extracted_at.desc(),
-            LiveOdds.selection,
-            LiveOdds.bookmaker
-        ).limit(limit).all()
-        
+        odds = (
+            query.order_by(LiveOdds.extracted_at.desc(), LiveOdds.selection, LiveOdds.bookmaker)
+            .limit(limit)
+            .all()
+        )
+
         session.close()
-        
+
         return {
             "odds": [o.to_dict() for o in odds],
             "count": len(odds),
-            "last_updated": datetime.utcnow().isoformat()
+            "last_updated": datetime.utcnow().isoformat(),
         }
-    
+
     except Exception as e:
         return {
             "error": str(e),
             "odds": [],
             "count": 0,
-            "last_updated": datetime.utcnow().isoformat()
+            "last_updated": datetime.utcnow().isoformat(),
         }
 
 
@@ -738,7 +735,7 @@ async def get_raw_odds(
             "count": 0,
             "last_updated": datetime.utcnow().isoformat(),
             "columns": [],
-            "error": "raw_csv_not_found"
+            "error": "raw_csv_not_found",
         }
 
     def parse_float(val):
@@ -770,33 +767,43 @@ async def get_raw_odds(
                     continue
                 if market and row.get("market") != market:
                     continue
-                
+
                 total_count += 1
                 row_index += 1
-                
+
                 # Capture timestamp before processing (use either timestamp or commence_time)
                 ts_val = row.get("timestamp") or row.get("commence_time")
                 if ts_val:
                     last_ts = ts_val
-                
+
                 # Only include rows after the offset point
                 if row_index <= offset:
                     continue
-                
+
                 # Keep as-is but coerce numeric bookmaker columns to float where possible
                 clean_row = {}
                 for k, v in row.items():
-                    if k in ["timestamp", "sport", "event_id", "away_team", "home_team", "commence_time", "market", "point", "selection"]:
+                    if k in [
+                        "timestamp",
+                        "sport",
+                        "event_id",
+                        "away_team",
+                        "home_team",
+                        "commence_time",
+                        "market",
+                        "point",
+                        "selection",
+                    ]:
                         clean_row[k] = v
                     else:
                         clean_row[k] = parse_float(v)
-                
+
                 rows.append(clean_row)
-                
+
                 # Stop when we have enough rows
                 if len(rows) >= limit:
                     break
-    
+
     except Exception as e:
         return {
             "rows": [],
@@ -820,27 +827,22 @@ async def get_raw_odds(
 # ADMIN ENDPOINTS (Auth-protected CSV download & database view)
 # ============================================================================
 
+
 @app.post("/api/admin/auth")
 async def admin_auth(password: str = Query(...)):
     """
     Authenticate as admin
-    
+
     Args:
         password: Admin password
-    
+
     Returns:
         {"authenticated": true/false, "token": "..."}
     """
     if verify_admin_password(password):
         # Generate simple token (in production, use JWT)
-        token = hashlib.sha256(
-            (password + datetime.utcnow().isoformat()).encode()
-        ).hexdigest()
-        return {
-            "authenticated": True,
-            "token": token,
-            "expires_in": 3600  # 1 hour
-        }
+        token = hashlib.sha256((password + datetime.utcnow().isoformat()).encode()).hexdigest()
+        return {"authenticated": True, "token": token, "expires_in": 3600}  # 1 hour
     else:
         raise HTTPException(status_code=401, detail="Invalid password")
 
@@ -850,10 +852,10 @@ async def download_ev_csv(authorization: Optional[str] = Header(None)):
     """
     Download EV opportunities as CSV from database
     Admin/designer only access
-    
+
     Args:
         authorization: Bearer token from admin auth
-    
+
     Returns:
         CSV file stream
     """
@@ -863,36 +865,48 @@ async def download_ev_csv(authorization: Optional[str] = Header(None)):
 
     if not SessionLocal:
         raise HTTPException(status_code=503, detail="Database not configured (CSV-only mode)")
-    
+
     try:
         session = SessionLocal()
-        
+
         # Query all EV opportunities
-        opportunities = session.query(EVOpportunity).order_by(
-            EVOpportunity.ev_percent.desc()
-        ).all()
-        
+        opportunities = session.query(EVOpportunity).order_by(EVOpportunity.ev_percent.desc()).all()
+
         if not opportunities:
             return StreamingResponse(
                 iter([b"No opportunities found\n"]),
                 media_type="text/csv",
-                headers={"Content-Disposition": "attachment; filename=ev_opportunities.csv"}
+                headers={"Content-Disposition": "attachment; filename=ev_opportunities.csv"},
             )
-        
+
         # Build CSV in memory
         output = StringIO()
-        
+
         # Headers
         headers = [
-            "sport", "event_id", "away_team", "home_team", "commence_time",
-            "market", "point", "selection", "player", "fair_odds", "best_odds",
-            "best_book", "ev_percent", "sharp_book_count", "implied_prob",
-            "stake", "kelly_fraction", "detected_at"
+            "sport",
+            "event_id",
+            "away_team",
+            "home_team",
+            "commence_time",
+            "market",
+            "point",
+            "selection",
+            "player",
+            "fair_odds",
+            "best_odds",
+            "best_book",
+            "ev_percent",
+            "sharp_book_count",
+            "implied_prob",
+            "stake",
+            "kelly_fraction",
+            "detected_at",
         ]
-        
+
         writer = csv.DictWriter(output, fieldnames=headers)
         writer.writeheader()
-        
+
         # Format and write rows
         for opp in opportunities:
             row = {
@@ -913,24 +927,24 @@ async def download_ev_csv(authorization: Optional[str] = Header(None)):
                 "implied_prob": f"{opp.implied_prob:.2f}%" if opp.implied_prob else "",
                 "stake": f"${int(opp.stake)}" if opp.stake else "",
                 "kelly_fraction": f"{opp.kelly_fraction:.3f}" if opp.kelly_fraction else "",
-                "detected_at": opp.detected_at.isoformat() if opp.detected_at else ""
+                "detected_at": opp.detected_at.isoformat() if opp.detected_at else "",
             }
             writer.writerow(row)
-        
+
         session.close()
-        
+
         # Return as downloadable CSV
         csv_content = output.getvalue()
-        
+
         async def iterfile():
             yield csv_content.encode()
-        
+
         return StreamingResponse(
             iterfile(),
             media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=ev_opportunities_download.csv"}
+            headers={"Content-Disposition": "attachment; filename=ev_opportunities_download.csv"},
         )
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating CSV: {str(e)}")
 
@@ -940,10 +954,10 @@ async def download_raw_odds_csv(authorization: Optional[str] = Header(None)):
     """
     Download raw odds as CSV from database
     Admin/designer only access
-    
+
     Args:
         authorization: Bearer token from admin auth
-    
+
     Returns:
         CSV file stream
     """
@@ -952,42 +966,47 @@ async def download_raw_odds_csv(authorization: Optional[str] = Header(None)):
 
     if not SessionLocal:
         raise HTTPException(status_code=503, detail="Database not configured (CSV-only mode)")
-    
+
     try:
         session = SessionLocal()
-        
+
         # Get latest extraction timestamp
-        latest = session.query(LiveOdds).order_by(
-            LiveOdds.extracted_at.desc()
-        ).first()
-        
+        latest = session.query(LiveOdds).order_by(LiveOdds.extracted_at.desc()).first()
+
         if not latest:
             return StreamingResponse(
                 iter([b"No odds data found\n"]),
                 media_type="text/csv",
-                headers={"Content-Disposition": "attachment; filename=raw_odds.csv"}
+                headers={"Content-Disposition": "attachment; filename=raw_odds.csv"},
             )
-        
+
         latest_time = latest.extracted_at
-        
+
         # Query odds from latest extraction
-        odds = session.query(LiveOdds).filter(
-            LiveOdds.extracted_at == latest_time
-        ).order_by(
-            LiveOdds.sport, LiveOdds.event_id, LiveOdds.market
-        ).all()
-        
+        odds = (
+            session.query(LiveOdds)
+            .filter(LiveOdds.extracted_at == latest_time)
+            .order_by(LiveOdds.sport, LiveOdds.event_id, LiveOdds.market)
+            .all()
+        )
+
         # Build CSV in memory
         output = StringIO()
-        
+
         headers = [
-            "sport", "event_id", "commence_time", "market", "point",
-            "selection", "bookmaker", "odds"
+            "sport",
+            "event_id",
+            "commence_time",
+            "market",
+            "point",
+            "selection",
+            "bookmaker",
+            "odds",
         ]
-        
+
         writer = csv.DictWriter(output, fieldnames=headers)
         writer.writeheader()
-        
+
         # Write rows
         for odd in odds:
             row = {
@@ -998,24 +1017,26 @@ async def download_raw_odds_csv(authorization: Optional[str] = Header(None)):
                 "point": f"{odd.point:.1f}" if odd.point else "",
                 "selection": odd.selection,
                 "bookmaker": odd.bookmaker,
-                "odds": f"{odd.odds:.4f}"
+                "odds": f"{odd.odds:.4f}",
             }
             writer.writerow(row)
-        
+
         session.close()
-        
+
         # Return as downloadable CSV
         csv_content = output.getvalue()
-        
+
         async def iterfile():
             yield csv_content.encode()
-        
+
         return StreamingResponse(
             iterfile(),
             media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename=raw_odds_{latest_time.isoformat().split('.')[0].replace(':', '-')}.csv"}
+            headers={
+                "Content-Disposition": f"attachment; filename=raw_odds_{latest_time.isoformat().split('.')[0].replace(':', '-')}.csv"
+            },
         )
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating CSV: {str(e)}")
 
@@ -1025,10 +1046,10 @@ async def get_database_stats(authorization: Optional[str] = Header(None)):
     """
     Get database statistics - row counts and latest updates
     Admin/designer only
-    
+
     Args:
         authorization: Bearer token from admin auth
-    
+
     Returns:
         Statistics about database contents
     """
@@ -1037,41 +1058,35 @@ async def get_database_stats(authorization: Optional[str] = Header(None)):
 
     if not SessionLocal:
         raise HTTPException(status_code=503, detail="Database not configured (CSV-only mode)")
-    
+
     try:
         session = SessionLocal()
-        
+
         # Count records
         ev_count = session.query(EVOpportunity).count()
         odds_count = session.query(LiveOdds).count()
         history_count = session.query(PriceHistory).count()
-        
+
         # Get latest timestamps
-        latest_ev = session.query(EVOpportunity).order_by(
-            EVOpportunity.detected_at.desc()
-        ).first()
-        
-        latest_odds = session.query(LiveOdds).order_by(
-            LiveOdds.extracted_at.desc()
-        ).first()
-        
+        latest_ev = session.query(EVOpportunity).order_by(EVOpportunity.detected_at.desc()).first()
+
+        latest_odds = session.query(LiveOdds).order_by(LiveOdds.extracted_at.desc()).first()
+
         session.close()
-        
+
         return {
             "ev_opportunities": {
                 "count": ev_count,
-                "latest_update": latest_ev.detected_at.isoformat() if latest_ev else None
+                "latest_update": latest_ev.detected_at.isoformat() if latest_ev else None,
             },
             "live_odds": {
                 "count": odds_count,
-                "latest_update": latest_odds.extracted_at.isoformat() if latest_odds else None
+                "latest_update": latest_odds.extracted_at.isoformat() if latest_odds else None,
             },
-            "price_history": {
-                "count": history_count
-            },
-            "timestamp": datetime.utcnow().isoformat()
+            "price_history": {"count": history_count},
+            "timestamp": datetime.utcnow().isoformat(),
         }
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
@@ -1080,12 +1095,13 @@ async def get_database_stats(authorization: Optional[str] = Header(None)):
 # ROOT ENDPOINT
 # ============================================================================
 
+
 @app.get("/")
 async def root():
     """API root endpoint with documentation links"""
     return {
         "name": "EV_ARB Bot API",
-        "version": "1.0.0",
+        "version": "2.0",
         "status": "running",
         "endpoints": {
             "health": "/health",
@@ -1097,8 +1113,8 @@ async def root():
             "admin_raw_odds_csv": "/api/admin/raw-odds-csv (requires Bearer token)",
             "admin_stats": "/api/admin/database-stats (requires Bearer token)",
             "docs": "/docs",
-            "openapi": "/openapi.json"
-        }
+            "openapi": "/openapi.json",
+        },
     }
 
 
@@ -1108,5 +1124,6 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
+
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)

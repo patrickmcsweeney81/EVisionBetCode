@@ -14,13 +14,11 @@ Configuration:
 """
 
 import csv
-import json
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import pandas as pd
 import requests

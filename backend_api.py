@@ -362,14 +362,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint for Render."""
     return {
         "status": "healthy",
         "version": "2.0",
-        "database": "connected" if os.getenv("DATABASE_URL") else "csv_fallback"
+        "database": "connected" if os.getenv("DATABASE_URL") else "csv_fallback",
     }
+
 
 @app.get("/")
 async def root():

@@ -2,7 +2,9 @@
 betfair_api.py
 Utility functions for connecting to Betfair Exchange API using credentials from config.
 """
+
 import logging
+
 from core import config
 
 try:
@@ -26,6 +28,7 @@ def get_betfair_client(active=True):
 def example_usage():
     key = get_betfair_client()
     print(f"Loaded Betfair API key: {key}")
+
 
 if __name__ == "__main__":
     example_usage()

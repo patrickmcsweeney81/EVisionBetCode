@@ -2,13 +2,14 @@
 Raw odds extractor - logs ALL bookmaker odds to raw_odds.csv
 This captures every opportunity WITH fair prices, EV%, and Prob calculated.
 """
+
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
-from datetime import datetime, timezone, timedelta
 
 from core.config import CSV_HEADERS
-from core.logging import log_all_odds
 from core.fair_odds import calculate_fair_odds
+from core.logging import log_all_odds
 
 BOOK_TO_COL = {
     "pinnacle": "Pinnacle",
@@ -48,18 +49,34 @@ BOOK_TO_COL = {
 }
 
 MAIN_MARKET_SHARPS = {
-    "draftkings", "fanduel", "betmgm", "betonlineag", "bovada",
-    "betus", "lowvig", "mybookieag", "marathonbet", "matchbook",
+    "draftkings",
+    "fanduel",
+    "betmgm",
+    "betonlineag",
+    "bovada",
+    "betus",
+    "lowvig",
+    "mybookieag",
+    "marathonbet",
+    "matchbook",
 }
 
 US_SHARP_BOOKS = {"draftkings", "fanduel", "betmgm"}
 
 
-def american_to_decimal(american_odds: float, market_key: str = "", bookmaker_key: str = "") -> float:
+def american_to_decimal(
+    american_odds: float, market_key: str = "", bookmaker_key: str = ""
+) -> float:
     """Convert American odds to decimal odds with prop/book heuristics."""
     is_likely_american = market_key.startswith("player_") or bookmaker_key in {
-        "draftkings", "fanduel", "betmgm", "betonlineag", "bovada",
-        "williamhill_us", "pointsbetau", "fanatics",
+        "draftkings",
+        "fanduel",
+        "betmgm",
+        "betonlineag",
+        "bovada",
+        "williamhill_us",
+        "pointsbetau",
+        "fanatics",
     }
 
     if american_odds >= 100:
@@ -174,8 +191,16 @@ def log_raw_event_odds(
             betfair_odds = betfair_au if betfair_au and betfair_au > 1.0 else betfair_eu
 
             sharp_keys = [
-                "draftkings", "fanduel", "betmgm", "betonlineag", "bovada",
-                "betus", "lowvig", "mybookieag", "marathonbet", "matchbook",
+                "draftkings",
+                "fanduel",
+                "betmgm",
+                "betonlineag",
+                "bovada",
+                "betus",
+                "lowvig",
+                "mybookieag",
+                "marathonbet",
+                "matchbook",
             ]
 
             other_sharps_odds_for_outcome = []
@@ -252,31 +277,39 @@ def log_raw_event_odds(
             num_sharps_str = str(num_sharps)
 
             all_odds_row = {col: "" for col in CSV_HEADERS}
-            all_odds_row.update({
-                "start_time": commence_time,
-                "sport": sport_key,
-                "event": f"{away_team} @ {home_team}",
-                "market": market_display,
-                "selection": selection,
-                "line": "",
-                "book": best_book_col,
-                "price": f"{outcome_odds:.3f}",
-                "fair": fair_str,
-                "ev": edge_str,
-                "prob": prob_str,
-                "stake": stake_str,
-                "num_sharps": num_sharps_str,
-            })
+            all_odds_row.update(
+                {
+                    "start_time": commence_time,
+                    "sport": sport_key,
+                    "event": f"{away_team} @ {home_team}",
+                    "market": market_display,
+                    "selection": selection,
+                    "line": "",
+                    "book": best_book_col,
+                    "price": f"{outcome_odds:.3f}",
+                    "fair": fair_str,
+                    "ev": edge_str,
+                    "prob": prob_str,
+                    "stake": stake_str,
+                    "num_sharps": num_sharps_str,
+                }
+            )
 
             # DEBUG: Print outcome details for player props to track Over/Under mix-up
             if is_player_prop and "threes" in market_key and description:
-                print(f"[DEBUG] Player: {description}, Market: {market_key}, Outcome_key: {outcome_key}")
+                print(
+                    f"[DEBUG] Player: {description}, Market: {market_key}, Outcome_key: {outcome_key}"
+                )
                 print(f"[DEBUG] Selection: {selection}")
                 if "pinnacle" in all_bookie_odds:
-                    print(f"[DEBUG] Pinnacle odds for {outcome_key}: {all_bookie_odds['pinnacle'].get(outcome_key)}")
+                    print(
+                        f"[DEBUG] Pinnacle odds for {outcome_key}: {all_bookie_odds['pinnacle'].get(outcome_key)}"
+                    )
                 if "sportsbet" in all_bookie_odds:
-                    print(f"[DEBUG] Sportsbet odds for {outcome_key}: {all_bookie_odds['sportsbet'].get(outcome_key)}")
-            
+                    print(
+                        f"[DEBUG] Sportsbet odds for {outcome_key}: {all_bookie_odds['sportsbet'].get(outcome_key)}"
+                    )
+
             for bk, outcomes_map in all_bookie_odds.items():
                 odds_val = outcomes_map.get(outcome_key)
                 if odds_val and odds_val > 0:
@@ -285,13 +318,18 @@ def log_raw_event_odds(
 
             if "pinnacle" in all_bookie_odds and outcome_key in all_bookie_odds["pinnacle"]:
                 all_odds_row["Pinnacle"] = f"{all_bookie_odds['pinnacle'][outcome_key]:.3f}"
-            if "betfair_ex_au" in all_bookie_odds and outcome_key in all_bookie_odds["betfair_ex_au"]:
+            if (
+                "betfair_ex_au" in all_bookie_odds
+                and outcome_key in all_bookie_odds["betfair_ex_au"]
+            ):
                 all_odds_row["Betfair_AU"] = f"{all_bookie_odds['betfair_ex_au'][outcome_key]:.3f}"
-            if "betfair_ex_eu" in all_bookie_odds and outcome_key in all_bookie_odds["betfair_ex_eu"]:
+            if (
+                "betfair_ex_eu" in all_bookie_odds
+                and outcome_key in all_bookie_odds["betfair_ex_eu"]
+            ):
                 all_odds_row["Betfair_EU"] = f"{all_bookie_odds['betfair_ex_eu'][outcome_key]:.3f}"
 
             log_all_odds(all_odds_csv, all_odds_row)
             any_row_logged = True
 
     # Silenced noisy per-event debug when no rows log; rely on CSV counts instead.
-

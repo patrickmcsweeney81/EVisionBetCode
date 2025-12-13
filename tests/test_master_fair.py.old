@@ -1,0 +1,51 @@
+"""Test master fair odds calculation (Pipeline V2)."""
+import sys
+from pathlib import Path
+
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+from pipeline_v2.ratings import BOOKMAKER_RATINGS, get_sport_weight
+from pipeline_v2.calculate_opportunities import fair_from_sharps
+
+
+def test_fair_odds_basic():
+    """Test basic fair odds calculation with sharp books."""
+    # Example: NBA over/under with 3 sharp books
+    test_data = [
+        {"bookmaker": "pinnacle", "price": 1.95},  # 4-star
+        {"bookmaker": "circa", "price": 1.90},  # 4-star
+        {"bookmaker": "betmgm", "price": 2.00},  # 3-star
+    ]
+    
+    sharp_books = [b for b in test_data if BOOKMAKER_RATINGS.get(b["bookmaker"], 0) >= 3]
+    assert len(sharp_books) == 3
+    
+    # Calculate fair odds (should weight by rating)
+    fair_odds = fair_from_sharps(sharp_books, "basketball_nba", "totals")
+    assert 1.90 <= fair_odds <= 2.00  # Should be weighted average
+
+
+def test_insufficient_sharp_books():
+    """Test handling when <2 sharp books available."""
+    test_data = [
+        {"bookmaker": "pinnacle", "price": 1.95},  # Only 1 sharp book
+        {"bookmaker": "draftkings", "price": 2.10},  # Not sharp
+    ]
+    
+    sharp_books = [b for b in test_data if BOOKMAKER_RATINGS.get(b["bookmaker"], 0) >= 3]
+    assert len(sharp_books) == 1
+    
+    # Should return None when <2 sharp books
+    fair_odds = fair_from_sharps(sharp_books, "basketball_nba", "totals")
+    assert fair_odds is None
+
+
+def test_sport_weights():
+    """Test sport weights are defined."""
+    nba_weight = get_sport_weight("basketball_nba")
+    nfl_weight = get_sport_weight("americanfootball_nfl")
+    
+    assert nba_weight > 0
+    assert nfl_weight > 0
+    assert nba_weight == nfl_weight  # Currently all sports have weight=1

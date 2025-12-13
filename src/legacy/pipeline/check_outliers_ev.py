@@ -14,7 +14,7 @@ import csv
 from pathlib import Path
 
 import calculate_ev as ev
-from bookmaker_ratings import load_weight_config, get_sharp_books_only
+from bookmaker_ratings import get_sharp_books_only, load_weight_config
 
 RAW_CSV = Path("data/raw_odds_pure.csv")
 OUTLIER_CSV = Path("data/outlier_highlights.csv")
@@ -95,13 +95,15 @@ def main():
         ev_pct = (odds / fair - 1.0) * 100
         status = "ev" if ev_pct >= EV_MIN_EDGE * 100 else "below_threshold"
 
-        results.append({
-            **o,
-            "fair_odds": f"{fair:.4f}",
-            "ev_percent": f"{ev_pct:.2f}%",
-            "sharp_count": sharp_count,
-            "status": status,
-        })
+        results.append(
+            {
+                **o,
+                "fair_odds": f"{fair:.4f}",
+                "ev_percent": f"{ev_pct:.2f}%",
+                "sharp_count": sharp_count,
+                "status": status,
+            }
+        )
 
     # Write results
     fieldnames = list(results[0].keys()) if results else []
@@ -122,7 +124,9 @@ def main():
     ev_hits = [r for r in results if r.get("status") == "ev"]
     print(f"EV opportunities among outliers: {len(ev_hits)}")
     for r in ev_hits[:10]:
-        print(f"  {r.get('selection')} @ {r.get('au_book')} {r.get('au_odds')} vs fair {r.get('fair_odds')} -> {r.get('ev_percent')}")
+        print(
+            f"  {r.get('selection')} @ {r.get('au_book')} {r.get('au_odds')} vs fair {r.get('fair_odds')} -> {r.get('ev_percent')}"
+        )
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ fetching events and markets.
 Usage:
     from core.scrape_sources.sportsbet import SportsbetAdapter
     from core.scrape_sources.merger import merge_odds_data
-    
+
     adapter = SportsbetAdapter()
     scraped = adapter.fetch_events(sport="basketball_nba")
     merged = merge_odds_data(primary_events, scraped)
@@ -26,7 +26,7 @@ from .rate_limiter import RateLimiter
 __all__ = [
     "BookmakerAdapter",
     "Event",
-    "Market", 
+    "Market",
     "Outcome",
     "RateLimiter",
 ]

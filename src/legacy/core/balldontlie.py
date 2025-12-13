@@ -9,11 +9,12 @@ Data fetched (single on-demand call per player):
 
 We deliberately keep logic minimal to avoid performance overhead.
 """
+
 from __future__ import annotations
 
 import os
 import time
-from typing import Dict, Optional, Any, List
+from typing import Any, Dict, List, Optional
 
 import requests
 

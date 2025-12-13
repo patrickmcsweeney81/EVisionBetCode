@@ -4,6 +4,7 @@ Note: These helpers do not strip bookmaker vig/overround because only single-sid
 prices are available per outcome when invoked. To de-vig, you need both sides of a
 market for the same bookmaker.
 """
+
 from statistics import median
 from typing import List, Optional
 

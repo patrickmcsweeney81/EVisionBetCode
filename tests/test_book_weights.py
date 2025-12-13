@@ -3,13 +3,14 @@ Tests for the book_weights module.
 """
 
 import pytest
+
 from core.book_weights import (
-    get_book_weight,
-    get_book_display_name,
-    list_books_by_weight,
     MAIN_MARKET_WEIGHTS,
     PLAYER_PROP_WEIGHTS,
     SPORT_OVERRIDES,
+    get_book_display_name,
+    get_book_weight,
+    list_books_by_weight,
 )
 
 
@@ -66,8 +67,12 @@ def test_get_book_weight_sport_override():
     assert get_book_weight("betonline", "main", "MMA") == 4
     assert get_book_weight("bet365", "props") == 2
     assert get_book_weight("bet365", "props", "NBA") == 3
-    assert get_book_weight("draftkings", "props", "BASKETBALL_NBA") == get_book_weight("draftkings", "props", "NBA")
-    assert get_book_weight("betonline", "main", "UFC") == get_book_weight("betonline", "main", "MMA")
+    assert get_book_weight("draftkings", "props", "BASKETBALL_NBA") == get_book_weight(
+        "draftkings", "props", "NBA"
+    )
+    assert get_book_weight("betonline", "main", "UFC") == get_book_weight(
+        "betonline", "main", "MMA"
+    )
 
 
 def test_get_book_weight_fallback():
@@ -104,5 +109,3 @@ def test_weight_scale_consistency():
         for market_type, weights in overrides.items():
             for book, weight in weights.items():
                 assert 0 <= weight <= 4
-
-

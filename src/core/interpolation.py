@@ -1,5 +1,7 @@
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
+
 import numpy as np
+
 
 def interpolate_odds(points: List[Tuple[float, float]], target: float) -> Optional[float]:
     """

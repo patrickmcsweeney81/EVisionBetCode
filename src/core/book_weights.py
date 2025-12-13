@@ -20,7 +20,7 @@ The existing ev_arb_bot.py and core/config.py use different approaches:
 
 1. ev_arb_bot.py: Uses percentage weights (Pinnacle 70%, Betfair 20%, Sharps 10%)
    SHARP_BOOKIES = ['pinnacle', 'betfair_ex_au', 'matchbook']
-   
+
 2. core/config.py: Uses a broader sharp list with Pinnacle 75%, Betfair 0%, Sharps 25%
    Includes: draftkings, fanduel, betmgm, betonlineag, bovada, etc.
 
@@ -28,15 +28,15 @@ Key Differences from this module:
 ---------------------------------
 - Betfair exchanges are weight 3 here (strong) vs. being a dedicated 20% weight
   in ev_arb_bot.py. This reflects that Betfair is a strong price source.
-  
+
 - Bovada, BetUS, MyBookie are weight 1 (soft/follower) here, but are listed
   in core/config.py SHARP_BOOKIES. This is INTENTIONAL - those books are
   recreational and should not heavily influence fair price.
-  
+
 - DraftKings/FanDuel are weight 3-4 here (especially 4 for props) which
   differs from ev_arb_bot.py's minimal list. This reflects their excellent
   prop markets.
-  
+
 - This module adds Circa and Bookmaker/CRIS as tier-1 sharps (weight 4),
   which are not currently used in the codebase but are industry-recognized
   sharp books.
@@ -47,8 +47,8 @@ This 0-4 scale system can work alongside or replace the existing percentage-base
 weighting. The get_book_weight() function provides a single entry point for
 looking up weights, which can be converted to percentages as needed.
 """
-from typing import Optional, Dict
 
+from typing import Dict, Optional
 
 # =============================================================================
 # BOOKMAKER CODE -> DISPLAY NAME MAPPING
@@ -96,20 +96,17 @@ MAIN_MARKET_WEIGHTS: Dict[str, int] = {
     "pinnacle": 4,
     "circa": 4,
     "bookmaker": 4,  # CRIS
-    
     # Tier 1-2: Strong sharps (weight 3)
     "betonline": 3,
     "betonlineag": 3,  # API alias for betonline
     "heritage": 3,
     "matchbook": 3,  # Exchange, good liquidity
     "lowvig": 3,
-    
     # Tier 2: Market movers (weight 3-2)
     "draftkings": 3,
     "fanduel": 3,
     "bet365": 2,
     "bet365_au": 2,
-    
     # Tier 3: Followers (weight 2-1)
     "caesars": 2,
     "betmgm": 2,
@@ -117,7 +114,6 @@ MAIN_MARKET_WEIGHTS: Dict[str, int] = {
     "pointsbetau": 2,
     "espnbet": 2,
     "williamhill_us": 2,
-    
     # Soft recreational books (weight 1)
     "bovada": 1,
     "betrivers": 1,
@@ -125,7 +121,6 @@ MAIN_MARKET_WEIGHTS: Dict[str, int] = {
     "mybookieag": 1,
     "betus": 1,
     "marathonbet": 1,
-    
     # Betfair exchanges - weight 3 (strong due to deep liquidity, commission adjusted)
     # Note: Current ev_arb_bot.py gives Betfair 20% dedicated weight
     "betfair_ex_au": 3,
@@ -148,15 +143,13 @@ PLAYER_PROP_WEIGHTS: Dict[str, int] = {
     # Tier 1: Top prop sources (weight 4)
     "pinnacle": 4,
     "draftkings": 4,  # Excellent prop markets
-    "fanduel": 4,     # Excellent prop markets
-    
+    "fanduel": 4,  # Excellent prop markets
     # Tier 2: Strong prop sources (weight 3)
     "betonline": 3,
     "betonlineag": 3,
     "circa": 3,
     "bookmaker": 3,
     "betmgm": 3,  # Strong on player props
-    
     # Tier 3: Decent prop sources (weight 2)
     "bet365": 2,
     "bet365_au": 2,
@@ -166,7 +159,6 @@ PLAYER_PROP_WEIGHTS: Dict[str, int] = {
     "lowvig": 2,
     "matchbook": 2,
     "williamhill_us": 2,
-    
     # Tier 4: Followers (weight 1)
     "bovada": 1,
     "betrivers": 1,
@@ -176,7 +168,6 @@ PLAYER_PROP_WEIGHTS: Dict[str, int] = {
     "mybookieag": 1,
     "betus": 1,
     "marathonbet": 1,
-    
     # Betfair exchanges (weight 1 for props - less liquid)
     "betfair_ex_au": 1,
     "betfair_ex_eu": 1,
@@ -233,7 +224,6 @@ SPORT_OVERRIDES: Dict[str, Dict[str, Dict[str, int]]] = {
             "heritage": 2,
         },
     },
-    
     # NBA Basketball
     # Props are heavily DK/FD driven
     # Main markets can use global MAIN_MARKET_WEIGHTS
@@ -259,7 +249,6 @@ SPORT_OVERRIDES: Dict[str, Dict[str, Dict[str, int]]] = {
             "pointsbetau": 1,
         },
     },
-    
     # NFL American Football
     # Similar to NBA: Pinnacle, DK, FD as top
     # BetOnline / Circa / Bookmaker strong
@@ -286,7 +275,6 @@ SPORT_OVERRIDES: Dict[str, Dict[str, Dict[str, int]]] = {
             "pointsbetau": 1,
         },
     },
-    
     # NHL Ice Hockey
     # Similar structure to NBA/NFL
     "NHL": {
@@ -305,7 +293,6 @@ SPORT_OVERRIDES: Dict[str, Dict[str, Dict[str, int]]] = {
             "unibet": 1,
         },
     },
-    
     # MLB Baseball
     "MLB": {
         "props": {
@@ -325,14 +312,10 @@ SPORT_OVERRIDES: Dict[str, Dict[str, Dict[str, int]]] = {
 }
 
 
-def get_book_weight(
-    book_code: str,
-    market_type: str,
-    sport: Optional[str] = None
-) -> int:
+def get_book_weight(book_code: str, market_type: str, sport: Optional[str] = None) -> int:
     """
     Get the weight for a bookmaker given the market type and optional sport.
-    
+
     Args:
         book_code: The OddsAPI bookmaker code (e.g., "pinnacle", "draftkings")
         market_type: Market type - one of:
@@ -340,10 +323,10 @@ def get_book_weight(
             - "props" for player props
             - "h2h", "spread", "total" (all treated as "main")
         sport: Optional uppercase sport code (e.g., "NBA", "NFL", "MMA")
-    
+
     Returns:
         Weight from 0-4. Returns 0 if bookmaker not found (ignore in fair price).
-    
+
     Examples:
         >>> get_book_weight("pinnacle", "main")
         4
@@ -355,14 +338,14 @@ def get_book_weight(
     # Normalize inputs
     book_code = (book_code or "").lower().strip()
     market_type = (market_type or "").lower().strip()
-    
+
     # Treat h2h, spread, total as "main"
     if market_type in ("h2h", "spread", "spreads", "total", "totals", "moneyline"):
         market_type = "main"
     elif market_type not in ("main", "props"):
         # Unknown market type, default to main
         market_type = "main"
-    
+
     # Normalize sport code if provided
     if sport:
         sport = sport.upper().strip()
@@ -376,19 +359,19 @@ def get_book_weight(
             "MIXED_MARTIAL_ARTS": "MMA",
         }
         sport = sport_map.get(sport, sport)
-    
+
     # Step 1: Check sport-specific overrides
     if sport and sport in SPORT_OVERRIDES:
         sport_override = SPORT_OVERRIDES[sport]
-        
+
         if market_type == "props" and "props" in sport_override:
             if book_code in sport_override["props"]:
                 return sport_override["props"][book_code]
-        
+
         if market_type == "main" and "main" in sport_override:
             if book_code in sport_override["main"]:
                 return sport_override["main"][book_code]
-    
+
     # Step 2: Fall back to global weights
     if market_type == "props":
         return PLAYER_PROP_WEIGHTS.get(book_code, 0)
@@ -399,10 +382,10 @@ def get_book_weight(
 def get_book_display_name(book_code: str) -> str:
     """
     Get human-friendly display name for a bookmaker code.
-    
+
     Args:
         book_code: The OddsAPI bookmaker code
-    
+
     Returns:
         Human-friendly name, or formatted code if not in lookup table
     """
@@ -418,18 +401,16 @@ def get_book_display_name(book_code: str) -> str:
 
 
 def list_books_by_weight(
-    market_type: str = "main",
-    sport: Optional[str] = None,
-    min_weight: int = 1
+    market_type: str = "main", sport: Optional[str] = None, min_weight: int = 1
 ) -> Dict[str, int]:
     """
     Get all bookmakers with weight >= min_weight for a given market/sport.
-    
+
     Args:
         market_type: "main" or "props"
         sport: Optional sport code for sport-specific weights
         min_weight: Minimum weight to include (default 1, excludes 0)
-    
+
     Returns:
         Dict of {book_code: weight} sorted by weight descending
     """
@@ -438,7 +419,7 @@ def list_books_by_weight(
         base_weights = dict(PLAYER_PROP_WEIGHTS)  # Explicit copy
     else:
         base_weights = dict(MAIN_MARKET_WEIGHTS)  # Explicit copy
-    
+
     # Apply sport overrides if specified (modifies our local copy only)
     if sport:
         sport = sport.upper().strip()
@@ -447,7 +428,7 @@ def list_books_by_weight(
             key = "props" if market_type == "props" else "main"
             if key in override:
                 base_weights.update(override[key])
-    
+
     # Filter by minimum weight and sort
     filtered = {k: v for k, v in base_weights.items() if v >= min_weight}
     return dict(sorted(filtered.items(), key=lambda x: (-x[1], x[0])))

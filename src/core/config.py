@@ -1,13 +1,54 @@
 # Standardized CSV header order for all logging scripts (web-compatible lowercase)
 CSV_HEADERS = [
-    "start_time", "sport", "event", "market", "selection", "line", "book", "price",
-    "fair", "ev", "prob", "stake", "num_sharps",
+    "start_time",
+    "sport",
+    "event",
+    "market",
+    "selection",
+    "line",
+    "book",
+    "price",
+    "fair",
+    "ev",
+    "prob",
+    "stake",
+    "num_sharps",
     # Sharp books (fair price calculation)
-    "Pinnacle", "Betfair_EU", "Betfair_AU", "Draftkings", "Fanduel", "Betmgm", "Betonline", "Bovada", "Betus", "Lowvig", "Mybookie", "Marathonbet", "Matchbook",
+    "Pinnacle",
+    "Betfair_EU",
+    "Betfair_AU",
+    "Draftkings",
+    "Fanduel",
+    "Betmgm",
+    "Betonline",
+    "Bovada",
+    "Betus",
+    "Lowvig",
+    "Mybookie",
+    "Marathonbet",
+    "Matchbook",
     # AU target books
-    "Sportsbet", "Bet365", "Pointsbet", "Betright", "Tab", "Dabble", "Unibet", "Ladbrokes", "Playup", "Tabtouch", "Betr", "Neds", "Boombet",
+    "Sportsbet",
+    "Bet365",
+    "Pointsbet",
+    "Betright",
+    "Tab",
+    "Dabble",
+    "Unibet",
+    "Ladbrokes",
+    "Playup",
+    "Tabtouch",
+    "Betr",
+    "Neds",
+    "Boombet",
     # US mass-market books
-    "Caesars", "Betrivers", "Sugarhouse", "Superbook", "Twinspires", "Wynnbet", "Williamhill"
+    "Caesars",
+    "Betrivers",
+    "Sugarhouse",
+    "Superbook",
+    "Twinspires",
+    "Wynnbet",
+    "Williamhill",
 ]
 
 """
@@ -20,6 +61,7 @@ should use book_weights.get_book_weight() for dynamic weight lookup.
 """
 
 import os
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env if present
@@ -37,38 +79,38 @@ load_dotenv()
 # New code: use book_weights.list_books_by_weight(market_type, min_weight=3)
 # ============================================================================
 SHARP_BOOKIES = [
-    "pinnacle",          # Primary sharp (weight 4)
-    "betfair_ex_eu",     # Betfair Europe (weight 3)
-    "betfair_ex_au",     # Betfair Australia (weight 3)
-    "draftkings",        # DraftKings (best for player props)
-    "fanduel",           # FanDuel (best for player props)
-    "betmgm",            # BetMGM (good for player props)
-    "betonlineag",       # BetOnline
-    "bovada",            # Bovada
-    "betus",             # BetUS
-    "lowvig",            # LowVig
-    "mybookieag",        # MyBookie
-    "marathonbet",       # Marathon Bet
-    "matchbook",         # Matchbook
+    "pinnacle",  # Primary sharp (weight 4)
+    "betfair_ex_eu",  # Betfair Europe (weight 3)
+    "betfair_ex_au",  # Betfair Australia (weight 3)
+    "draftkings",  # DraftKings (best for player props)
+    "fanduel",  # FanDuel (best for player props)
+    "betmgm",  # BetMGM (good for player props)
+    "betonlineag",  # BetOnline
+    "bovada",  # Bovada
+    "betus",  # BetUS
+    "lowvig",  # LowVig
+    "mybookieag",  # MyBookie
+    "marathonbet",  # Marathon Bet
+    "matchbook",  # Matchbook
 ]
 
 # ============================================================================
 # AUSTRALIAN BOOKMAKERS (target books for EV opportunities)
 # ============================================================================
 AU_BOOKIES = [
-    "sportsbet",         # SportsBet
-    "tab",               # TAB
-    "neds",              # Neds
-    "ladbrokes_au",      # Ladbrokes
-    "pointsbetau",       # PointsBet (AU)
-    "boombet",           # BoomBet
-    "betright",          # Bet Right
-    "playup",            # PlayUp
-    "unibet",            # Unibet
-    "tabtouch",          # TABtouch
-    "dabble_au",         # Dabble AU
-    "betr_au",           # Betr
-    "bet365_au",         # Bet365 AU
+    "sportsbet",  # SportsBet
+    "tab",  # TAB
+    "neds",  # Neds
+    "ladbrokes_au",  # Ladbrokes
+    "pointsbetau",  # PointsBet (AU)
+    "boombet",  # BoomBet
+    "betright",  # Bet Right
+    "playup",  # PlayUp
+    "unibet",  # Unibet
+    "tabtouch",  # TABtouch
+    "dabble_au",  # Dabble AU
+    "betr_au",  # Betr
+    "bet365_au",  # Bet365 AU
 ]
 
 # ============================================================================
@@ -77,30 +119,30 @@ AU_BOOKIES = [
 # Odds API keys chosen for breadth of availability.
 # ============================================================================
 US_BOOKIES = [
-    "draftkings",       # DraftKings
-    "fanduel",          # FanDuel
-    "betmgm",           # BetMGM
-    "caesars",          # Caesars
-    "betrivers",        # BetRivers
-    "sugarhouse",       # SugarHouse
-    "superbook",        # SuperBook
-    "twinspires",       # TwinSpires
-    "wynnbet",          # WynnBet
-    "williamhill_us",   # William Hill US
-    "bovada",           # Bovada
-    "betonlineag",      # BetOnline
-    "betus",            # BetUS
-    "lowvig",           # LowVig
-    "mybookieag",       # MyBookie
+    "draftkings",  # DraftKings
+    "fanduel",  # FanDuel
+    "betmgm",  # BetMGM
+    "caesars",  # Caesars
+    "betrivers",  # BetRivers
+    "sugarhouse",  # SugarHouse
+    "superbook",  # SuperBook
+    "twinspires",  # TwinSpires
+    "wynnbet",  # WynnBet
+    "williamhill_us",  # William Hill US
+    "bovada",  # Bovada
+    "betonlineag",  # BetOnline
+    "betus",  # BetUS
+    "lowvig",  # LowVig
+    "mybookieag",  # MyBookie
 ]
 
 # ============================================================================
 # OTHER BOOKMAKERS (logged for comparison, not used in fair calc)
 # ============================================================================
 OTHER_BOOKIES = [
-    "draftkings",        # DraftKings
-    "fanduel",           # FanDuel
-    "betmgm",            # BetMGM
+    "draftkings",  # DraftKings
+    "fanduel",  # FanDuel
+    "betmgm",  # BetMGM
 ]
 
 # ============================================================================
@@ -149,9 +191,9 @@ ALL_BOOKIES_ORDERED = [
 # These percentage weights are kept for legacy code compatibility only.
 # NOTE: New handlers use book_weights.py where Betfair = weight 3 (strong)
 # ============================================================================
-WEIGHT_PINNACLE = 0.75       # Pinnacle gets 75% weight  
-WEIGHT_BETFAIR = 0.25        # Betfair gets 25% weight (changed from 0.0)
-WEIGHT_OTHER_SHARPS = 0.25   # Other sharp books get 25% weight (median)
+WEIGHT_PINNACLE = 0.75  # Pinnacle gets 75% weight
+WEIGHT_BETFAIR = 0.25  # Betfair gets 25% weight (changed from 0.0)
+WEIGHT_OTHER_SHARPS = 0.25  # Other sharp books get 25% weight (median)
 
 # ============================================================================
 # PLAYER PROPS MARKETS BY SPORT
@@ -201,7 +243,7 @@ NCAAB_PROP_MARKETS = NBA_PROP_MARKETS
 WNBA_PROP_MARKETS = NBA_PROP_MARKETS
 
 # NFL American Football Props - High liquidity markets only
-# Removed: longest_completion, rush_longest, reception_longest, solo_tackles, 
+# Removed: longest_completion, rush_longest, reception_longest, solo_tackles,
 # defensive_interceptions, pats (low availability)
 NFL_PROP_MARKETS = [
     # Passing (high liquidity)
@@ -282,7 +324,9 @@ SPORT_PROP_MARKETS = {
 # ============================================================================
 
 BETFAIR_BOOKIES = ["betfair_ex_eu", "betfair_ex_au"]  # Betfair exchanges to exclude
-BETFAIR_COMMISSION = float(os.getenv("BETFAIR_COMMISSION", 0.06))    # 6% commission rate (override with .env)
+BETFAIR_COMMISSION = float(
+    os.getenv("BETFAIR_COMMISSION", 0.06)
+)  # 6% commission rate (override with .env)
 
 # Betfair API keys (active and testing)
 BETFAIR_API_KEY_ACTIVE = os.getenv("BETFAIR_API_KEY_ACTIVE", "")
@@ -291,28 +335,28 @@ BETFAIR_API_KEY_TESTING = os.getenv("BETFAIR_API_KEY_TESTING", "")
 # ============================================================================
 # THRESHOLDS & FILTERS
 # ============================================================================
-EV_MIN_EDGE = 0.02           # Minimum EV threshold (2%)
-MIN_PROB = 0.20              # Minimum probability threshold (20%)
-MIN_STAKE = 5.0              # Minimum Kelly stake to log ($5)
-MAX_MARGIN_PERCENT = 15.0    # Skip books with margin >15%
+EV_MIN_EDGE = 0.02  # Minimum EV threshold (2%)
+MIN_PROB = 0.20  # Minimum probability threshold (20%)
+MIN_STAKE = 5.0  # Minimum Kelly stake to log ($5)
+MAX_MARGIN_PERCENT = 15.0  # Skip books with margin >15%
 MIN_BOOKMAKERS_AFTER_OUTLIERS = 5  # Minimum sharp books needed
-LINE_TOLERANCE = 0.25        # Spreads/totals line matching tolerance
+LINE_TOLERANCE = 0.25  # Spreads/totals line matching tolerance
 
 # Enable/disable filters (set to False to disable)
-ENABLE_EV_FILTER = True      # Set False to log all opportunities regardless of edge
-ENABLE_PROB_FILTER = True    # Set False to log all probabilities
+ENABLE_EV_FILTER = True  # Set False to log all opportunities regardless of edge
+ENABLE_PROB_FILTER = True  # Set False to log all probabilities
 
 # ============================================================================
 # BANKROLL & KELLY
 # ============================================================================
-BANKROLL = 1000.0            # Default bankroll ($1000)
-KELLY_FRACTION = 0.25        # Kelly fraction for stake sizing (25%)
+BANKROLL = 1000.0  # Default bankroll ($1000)
+KELLY_FRACTION = 0.25  # Kelly fraction for stake sizing (25%)
 
 # ============================================================================
 # TIME FILTERS
 # ============================================================================
-MIN_TIME_TO_START_MINUTES = 0   # Skip events starting too soon (minutes)
-MAX_TIME_TO_START_HOURS = 999   # Skip events too far out (hours)
+MIN_TIME_TO_START_MINUTES = 0  # Skip events starting too soon (minutes)
+MAX_TIME_TO_START_HOURS = 999  # Skip events too far out (hours)
 
 # ============================================================================
 # DATA QUALITY

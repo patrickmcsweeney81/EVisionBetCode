@@ -4,16 +4,18 @@ Reads the wide raw CSV (one row per outcome with all bookmaker columns),
 computes fair odds from sharp books (DK/FD/Betfair when present), then
 writes EV-positive opportunities to CSV and PostgreSQL database.
 """
+
 import csv
-import sys
 import os
+import sys
+from datetime import datetime
 from pathlib import Path
 from statistics import median
 from typing import Dict, List, Tuple
-from datetime import datetime
-from sqlalchemy import create_engine, Column, String, Float, DateTime, Integer
-from sqlalchemy.orm import sessionmaker, declarative_base
+
 from dotenv import load_dotenv
+from sqlalchemy import Column, DateTime, Float, Integer, String, create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 # Add script directory to Python path for relative imports (needed for Render cron jobs)
 SCRIPT_DIR = Path(__file__).parent
@@ -23,10 +25,10 @@ if str(SCRIPT_DIR) not in sys.path:
 # Import bookmaker ratings & weighting
 from ratings import (
     BOOKMAKER_RATINGS,
-    load_weight_config,
     calculate_book_weight,
     get_sharp_books_only,
     get_target_books_only,
+    load_weight_config,
 )
 
 # Database imports (conditional)
@@ -57,40 +59,42 @@ class EVOpportunity(Base):
     kelly_fraction = Column(Float, default=0.25)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
 # Load environment - look for .env in parent directory
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
+
 
 # File locations - use absolute paths for reliability
 # Try multiple locations to support both local and Render deployments
 def get_data_dir():
     """Find data directory - robust for Render and local dev."""
     cwd = Path.cwd()
-    
+
     # Strip duplicate /src/src patterns (Render issue)
     cwd_str = str(cwd).replace("\\src\\src", "\\src").replace("/src/src", "/src")
     cwd = Path(cwd_str)
-    
+
     # Priority 1: cwd/data (Render: /opt/render/project/src/data)
     data_path = cwd / "data"
     data_path.mkdir(parents=True, exist_ok=True)
     if data_path.exists() and data_path.is_dir():
         return data_path
-    
+
     # Priority 2: parent/data if cwd is /src
     if cwd.name == "src":
         data_path = cwd.parent / "data"
         data_path.mkdir(parents=True, exist_ok=True)
         if data_path.exists() and data_path.is_dir():
             return data_path
-    
+
     # Priority 3: script parent (pipeline_v2 → src → data)
     script_parent = Path(__file__).parent.parent
     data_path = script_parent / "data"
     data_path.mkdir(parents=True, exist_ok=True)
     if data_path.exists() and data_path.is_dir():
         return data_path
-    
+
     # Fallback
     return cwd / "data"
 
@@ -155,35 +159,34 @@ def devig_two_way(over_odds: float, under_odds: float) -> Tuple[float, float]:
     """
     if over_odds <= 1 or under_odds <= 1:
         return 0.0, 0.0
-    
+
     over_prob = 1.0 / over_odds
     under_prob = 1.0 / under_odds
     total = over_prob + under_prob
-    
+
     if total == 0:
         return 0.0, 0.0
-    
+
     # Devig: proportional scaling
     over_devig = over_prob / total
     under_devig = under_prob / total
-    
+
     return over_devig, under_devig
 
 
 def calculate_fair_odds_two_way(
-    sharps_over: List[float],
-    sharps_under: List[float]
+    sharps_over: List[float], sharps_under: List[float]
 ) -> Tuple[float, float]:
     """
     Calculate fair odds from sharp bookmaker odds using median.
     """
     if not sharps_over or not sharps_under:
         return 0.0, 0.0
-    
+
     # Use median of sharp odds
     fair_over = sorted(sharps_over)[len(sharps_over) // 2]
     fair_under = sorted(sharps_under)[len(sharps_under) // 2]
-    
+
     return fair_over, fair_under
 
 
@@ -191,23 +194,23 @@ def kelly_stake(bankroll: float, fair_odds: float, bet_odds: float, kelly_frac: 
     """Calculate Kelly Criterion stake."""
     if bet_odds <= 1 or fair_odds <= 1:
         return 0.0
-    
+
     prob = 1.0 / fair_odds
     edge = (bet_odds * prob) - (1 - prob)
-    
+
     if edge <= 0:
         return 0.0
-    
+
     kelly_full = edge / (bet_odds - 1)
     stake = bankroll * kelly_full * kelly_frac
-    
+
     return max(0, min(stake, bankroll * 0.1))  # Cap at 10% of bankroll
 
 
 def read_raw_odds() -> List[Dict]:
     """Read raw odds from database (primary) or CSV (fallback)."""
     db_url = os.getenv("DATABASE_URL")
-    
+
     # Priority 1: Read from database
     if db_url:
         try:
@@ -225,10 +228,10 @@ def read_raw_odds() -> List[Dict]:
             print(f"[!] Falling back to CSV...")
     else:
         print(f"[!] DATABASE_URL not set, using CSV fallback")
-    
+
     # Fallback: Read from CSV
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     if not RAW_CSV.exists():
         print(f"[!] {RAW_CSV} not found")
         print(f"[!] Looking in: {DATA_DIR}")
@@ -297,10 +300,11 @@ def group_rows_wide(rows: List[Dict]) -> Dict[Tuple[str, str, str, str, str], Li
 
 def extract_sides(rows: List[Dict]) -> Tuple[Dict, Dict]:
     """Return two sides (A, B) from the grouped rows.
-    
-    If multiple rows exist for same side (different timestamps), 
+
+    If multiple rows exist for same side (different timestamps),
     prefer the one with most bookmaker coverage.
     """
+
     def is_over(sel: str) -> bool:
         s = sel.lower()
         return s.startswith("over") or s.endswith(" over")
@@ -308,7 +312,7 @@ def extract_sides(rows: List[Dict]) -> Tuple[Dict, Dict]:
     def is_under(sel: str) -> bool:
         s = sel.lower()
         return s.startswith("under") or s.endswith(" under")
-    
+
     def count_bookmaker_odds(row: Dict) -> int:
         """Count non-zero bookmaker odds in this row."""
         count = 0
@@ -324,7 +328,7 @@ def extract_sides(rows: List[Dict]) -> Tuple[Dict, Dict]:
     # Get all over/under rows
     over_rows = [r for r in rows if is_over(r.get("selection", ""))]
     under_rows = [r for r in rows if is_under(r.get("selection", ""))]
-    
+
     # Pick the row with most bookmaker coverage (handles duplicate timestamps)
     over_row = max(over_rows, key=count_bookmaker_odds) if over_rows else None
     under_row = max(under_rows, key=count_bookmaker_odds) if under_rows else None
@@ -347,102 +351,87 @@ def get_bookie_columns(rows: List[Dict]) -> List[str]:
 
 def remove_outliers_relative(odds_list: List[float], tolerance: float = 0.05) -> List[float]:
     """Remove odds >tolerance% away from median.
-    
+
     Args:
         odds_list: List of decimal odds
         tolerance: Acceptable deviation (default 5%)
-    
+
     Returns:
         Filtered odds list
     """
     if len(odds_list) < 2:
         return odds_list
-    
+
     med = median(odds_list)
     return [o for o in odds_list if abs(o - med) / med <= tolerance]
 
 
-def fair_from_sharps(side_a: Dict, side_b: Dict, bookie_cols: List[str]) -> Tuple[float, float, int]:
-    """Compute weighted fair odds from sharp books (with outlier removal).
-    
-    Process:
-    1. Collect devigged odds from sharp books (3⭐ and 4⭐)
-    2. Remove outliers (5% tolerance from median)
-    3. Calculate weighted average using SHARP_WEIGHTS
-    
-    Returns (fair_a, fair_b, sharp_count) where sharp_count = books used.
-    Requires at least MIN_BOOKMAKER_COVERAGE weight in result.
+def fair_from_sharps(
+    sharp_books: list[dict], sport_key: str, market: str, side: str = "over"  # "over" or "under"
+) -> float | None:
     """
-    over_odds = []
-    under_odds = []
-    over_weighted = []
-    under_weighted = []
+    Calculate fair odds from sharp books (3⭐/4⭐ only).
+
+    Uses separate weight totals for Over vs Under (critical for player props).
+
+    Args:
+        sharp_books: List of dicts with 'bookmaker' and 'price' keys
+        sport_key: Sport identifier (e.g., 'basketball_nba')
+        market: Market type (e.g., 'totals', 'player_points')
+        side: 'over' or 'under' (for separate weight totals)
+
+    Returns:
+        Fair odds (float) or None if <2 sharp books
+    """
+    from .ratings import BOOKMAKER_RATINGS, get_sport_weight
+
+    if len(sharp_books) < 2:
+        return None
+
+    sport_weight = get_sport_weight(sport_key)
     total_weight = 0.0
-    
-    for col, weight in SHARP_WEIGHTS.items():
-        if col not in bookie_cols:
+    weighted_sum = 0.0
+
+    for book in sharp_books:
+        bookmaker = book.get("bookmaker")
+        price = book.get("price")
+
+        if not bookmaker or not price:
             continue
-        
-        a = parse_float(side_a.get(col, "0"))
-        b = parse_float(side_b.get(col, "0"))
-        
-        # Both sides required
-        if a <= 1 or b <= 1:
+
+        book_rating = BOOKMAKER_RATINGS.get(bookmaker, 0)
+        if book_rating < 3:  # Only 3⭐/4⭐
             continue
-        
-        # Devig
-        pa, pb = devig_two_way(a, b)
-        if pa > 0 and pb > 0:
-            fair_a = 1 / pa
-            fair_b = 1 / pb
-            
-            over_odds.append(fair_a)
-            under_odds.append(fair_b)
-            over_weighted.append((fair_a, weight))
-            under_weighted.append((fair_b, weight))
-            total_weight += weight
-    
-    # Remove outliers before weighting
-    over_odds_clean = remove_outliers_relative(over_odds, tolerance=0.05)
-    under_odds_clean = remove_outliers_relative(under_odds, tolerance=0.05)
-    
-    # Recalculate weights for non-outlier books only
-    over_weighted = [(o, w) for o, w in over_weighted if o in over_odds_clean]
-    under_weighted = [(o, w) for o, w in under_weighted if o in under_odds_clean]
-    
-    # Calculate separate totals for each side
-    over_weight_total = sum(w for _, w in over_weighted)
-    under_weight_total = sum(w for _, w in under_weighted)
-    
-    # Need minimum weight coverage
-    if over_weight_total < 0.10 or under_weight_total < 0.10:
-        return 0.0, 0.0, 0
-    
-    # Calculate weighted averages with individual weight totals
-    fair_a = sum(odds * weight for odds, weight in over_weighted) / over_weight_total
-    fair_b = sum(odds * weight for odds, weight in under_weighted) / under_weight_total
-    
-    sharp_count = len(over_weighted)  # Use over side count (should equal under count)
-    
-    return fair_a, fair_b, sharp_count
+
+        weight = book_rating * sport_weight
+        total_weight += weight
+        weighted_sum += (1.0 / price) * weight
+
+    if total_weight == 0:
+        return None
+
+    fair_implied_prob = weighted_sum / total_weight
+    return 1.0 / fair_implied_prob if fair_implied_prob > 0 else None
 
 
-def process_two_way_markets(grouped: Dict, bookie_cols: List[str], verbose: bool = False) -> List[Dict]:
+def process_two_way_markets(
+    grouped: Dict, bookie_cols: List[str], verbose: bool = False
+) -> List[Dict]:
     opportunities: List[Dict] = []
-    
+
     # Diagnostic counters
     stats = {
-        'total_buckets': len(grouped),
-        'missing_sides': 0,
-        'no_sharps': 0,
-        'checked_opportunities': 0,
-        'below_threshold': 0,
-        'found_ev': 0
+        "total_buckets": len(grouped),
+        "missing_sides": 0,
+        "no_sharps": 0,
+        "checked_opportunities": 0,
+        "below_threshold": 0,
+        "found_ev": 0,
     }
 
     # Use target books (1⭐) present in this dataset
     target_books = [b for b in bookie_cols if b in TARGET_BOOKS]
-    
+
     if verbose:
         print(f"\n[EV DETAIL] Target AU bookmakers detected: {len(target_books)}")
         print(f"   {', '.join(target_books)}")
@@ -450,17 +439,17 @@ def process_two_way_markets(grouped: Dict, bookie_cols: List[str], verbose: bool
     for (sport, event_id, market, point, player_name), rows in grouped.items():
         # Skip exchange-only markets
         if market in EXCLUDE_MARKETS:
-            stats['no_sharps'] += 1
+            stats["no_sharps"] += 1
             continue
-        
+
         side_a, side_b = extract_sides(rows)
         if not side_a or not side_b:
-            stats['missing_sides'] += 1
+            stats["missing_sides"] += 1
             continue
 
         fair_a, fair_b, sharp_count = fair_from_sharps(side_a, side_b, bookie_cols)
         if fair_a <= 1 or fair_b <= 1 or sharp_count == 0:
-            stats['no_sharps'] += 1
+            stats["no_sharps"] += 1
             continue
 
         sel_a = side_a.get("selection", "")
@@ -490,13 +479,13 @@ def process_two_way_markets(grouped: Dict, bookie_cols: List[str], verbose: bool
                 if odds <= 1:
                     continue
 
-                stats['checked_opportunities'] += 1
+                stats["checked_opportunities"] += 1
                 ev = (odds / fair) - 1.0
                 if ev < EV_MIN_EDGE:
-                    stats['below_threshold'] += 1
+                    stats["below_threshold"] += 1
                     continue
 
-                stats['found_ev'] += 1
+                stats["found_ev"] += 1
                 prob = 1.0 / fair
                 stake = kelly_stake(BANKROLL, fair, odds, KELLY_FRACTION)
 
@@ -518,13 +507,15 @@ def process_two_way_markets(grouped: Dict, bookie_cols: List[str], verbose: bool
                     opp[bk] = val if val > 0 else 0
 
                 opportunities.append(opp)
-    
+
     if verbose:
         print(f"\n[EV DETAIL] EV Calculation Breakdown:")
         print(f"   Total market buckets: {stats['total_buckets']}")
         print(f"   Missing both sides: {stats['missing_sides']}")
         print(f"   No sharp coverage: {stats['no_sharps']}")
-        print(f"   Valid buckets checked: {stats['total_buckets'] - stats['missing_sides'] - stats['no_sharps']}")
+        print(
+            f"   Valid buckets checked: {stats['total_buckets'] - stats['missing_sides'] - stats['no_sharps']}"
+        )
         print(f"   Book/side combos checked: {stats['checked_opportunities']}")
         print(f"   Below {EV_MIN_EDGE*100:.1f}% threshold: {stats['below_threshold']}")
         print(f"   Found EV opportunities: {stats['found_ev']}")
@@ -600,13 +591,15 @@ def write_opportunities(opportunities: List[Dict], headers: List[str]):
             try:
                 # Clear old records - we keep only latest opportunities
                 db.query(EVOpportunity).delete()
-                
+
                 # Insert new records - data is already in correct format
                 for opp in opportunities:
                     commence_ts = None
                     if opp.get("commence_time"):
                         try:
-                            commence_ts = datetime.fromisoformat(opp["commence_time"].replace("Z", "+00:00"))
+                            commence_ts = datetime.fromisoformat(
+                                opp["commence_time"].replace("Z", "+00:00")
+                            )
                         except Exception:
                             commence_ts = None
 
@@ -631,7 +624,7 @@ def write_opportunities(opportunities: List[Dict], headers: List[str]):
                         kelly_fraction=KELLY_FRACTION,
                     )
                     db.add(record)
-                
+
                 db.commit()
                 print(f"[OK] ✅ Wrote {len(opportunities)} opportunities to PostgreSQL database")
             finally:
@@ -643,10 +636,9 @@ def write_opportunities(opportunities: List[Dict], headers: List[str]):
         print("[OK] Database not connected - CSV output saved")
 
 
-
 def main():
     print("=== EV CALCULATOR (weighted by bookmaker rating & sport) ===\n")
-    
+
     # Debug: Show file paths
     print(f"[DEBUG] Script location: {Path(__file__).resolve()}")
     print(f"[DEBUG] Working directory: {Path.cwd()}")
@@ -669,39 +661,41 @@ def main():
 
     # Process each sport with its own weight profile
     all_opportunities = []
-    
+
     for sport in sorted(sports_in_data):
         print(f"\n{'='*70}")
         print(f"Processing: {sport}")
         print(f"{'='*70}")
-        
+
         # Load sport-specific weights
         weights = load_weight_config(sport)
         print(f"[CONFIG] Weight profile for {sport}:")
-        print(f"  4*: {weights[4]:.1%}  3*: {weights[3]:.1%}  2*: {weights[2]:.1%}  1*: {weights[1]:.1%}")
-        
+        print(
+            f"  4*: {weights[4]:.1%}  3*: {weights[3]:.1%}  2*: {weights[2]:.1%}  1*: {weights[1]:.1%}"
+        )
+
         # Update global weights for this sport
         global SHARP_WEIGHTS, TARGET_BOOKS
         SHARP_WEIGHTS = get_sharp_books_only(weights)
         TARGET_BOOKS = get_target_books_only()
-        
+
         # Filter rows for this sport
         sport_rows = [r for r in raw_rows if r.get("sport") == sport]
-        
+
         # Group and calculate EV
         grouped = group_rows_wide(sport_rows)
         print(f"[PROC] Grouped into {len(grouped)} market/line buckets")
 
         opportunities = process_two_way_markets(grouped, bookie_cols, verbose=True)
         print(f"[OK] Found {len(opportunities)} EV opportunities")
-        
+
         all_opportunities.extend(opportunities)
-    
+
     print(f"\n{'='*70}")
     print(f"FINAL RESULTS")
     print(f"{'='*70}")
     print(f"Total opportunities across all sports: {len(all_opportunities)}")
-    
+
     # Build headers from first opportunity
     if all_opportunities:
         headers = build_headers(bookie_cols)

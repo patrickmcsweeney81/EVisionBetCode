@@ -12,18 +12,20 @@ Configuration:
 - Time filter: Events starting >5min from now, <48hrs from now
 - Filters: 2-way markets only (Over/Under), DK+FD coverage required
 """
-import os
-import sys
+
 import csv
 import json
-import requests
-from pathlib import Path
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional
-from dotenv import load_dotenv
-import pandas as pd
-from sqlalchemy import create_engine
+import os
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import pandas as pd
+import requests
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
 
 # Load environment - look for .env in project root
 env_paths = [
@@ -36,36 +38,38 @@ for env_path in env_paths:
         break
 API_KEY = os.getenv("ODDS_API_KEY", "")
 
+
 # File locations - use absolute paths for reliability
 # Try multiple locations to support both local and Render deployments
 def get_data_dir():
     """Find data directory - robust for Render and local dev."""
     cwd = Path.cwd()
- # Strip duplicate /src/src patterns (Render bug)
+    # Strip duplicate /src/src patterns (Render bug)
     cwd_str = str(cwd).replace("\\src\\src", "\\src").replace("/src/src", "/src")
     cwd = Path(cwd_str)
-    
+
     # Priority 1: cwd/data
     data_path = cwd / "data"
     data_path.mkdir(parents=True, exist_ok=True)
     if data_path.exists() and data_path.is_dir():
         return data_path
-    
+
     # Priority 2: parent/data if cwd is /src
     if cwd.name == "src":
         data_path = cwd.parent / "data"
         data_path.mkdir(parents=True, exist_ok=True)
         if data_path.exists() and data_path.is_dir():
             return data_path
-    
+
     # Priority 3: script parent
     script_parent = Path(__file__).parent.parent
     data_path = script_parent / "data"
     data_path.mkdir(parents=True, exist_ok=True)
     if data_path.exists() and data_path.is_dir():
         return data_path
-    
+
     return cwd / "data"
+
 
 DATA_DIR = get_data_dir()
 RAW_CSV = DATA_DIR / "raw_odds_pure.csv"
@@ -81,83 +85,83 @@ REGIONS = os.getenv("REGIONS", "au,us,eu")
 ODDS_FORMAT = "decimal"  # Always decimal for calculations
 
 # Time filtering for events
-EVENT_MIN_MINUTES = 5   # Don't fetch events starting <5 min from now
-EVENT_MAX_HOURS = 48    # Don't fetch events starting >48 hrs from now
+EVENT_MIN_MINUTES = 5  # Don't fetch events starting <5 min from now
+EVENT_MAX_HOURS = 48  # Don't fetch events starting >48 hrs from now
 
 # Most common player props for each sport
 NBA_PROPS = [
-    "player_points",           # Points scored
-    "player_rebounds",         # Rebounds
-    "player_assists",          # Assists
-    "player_threes",           # 3-pointers made
-    "player_blocks",           # Blocks
-    "player_steals",           # Steals
-    "player_turnovers",        # Turnovers
-    "player_blocks_steals",    # Blocks + Steals combined
+    "player_points",  # Points scored
+    "player_rebounds",  # Rebounds
+    "player_assists",  # Assists
+    "player_threes",  # 3-pointers made
+    "player_blocks",  # Blocks
+    "player_steals",  # Steals
+    "player_turnovers",  # Turnovers
+    "player_blocks_steals",  # Blocks + Steals combined
     "player_points_rebounds_assists",  # PRA (triple combo)
-    "player_points_assists",   # PA combo
+    "player_points_assists",  # PA combo
     "player_points_rebounds",  # PR combo
-    "player_rebounds_assists", # RA combo
+    "player_rebounds_assists",  # RA combo
 ]
 
 NFL_PROPS = [
     # Passing (QB)
-    "player_pass_yds",         # Passing yards
-    "player_pass_tds",         # Passing TDs
-    "player_pass_completions", # Completions
-    "player_pass_attempts",    # Pass attempts
-    "player_pass_interceptions", # Interceptions
+    "player_pass_yds",  # Passing yards
+    "player_pass_tds",  # Passing TDs
+    "player_pass_completions",  # Completions
+    "player_pass_attempts",  # Pass attempts
+    "player_pass_interceptions",  # Interceptions
     # Rushing (RB/QB)
-    "player_rush_yds",         # Rushing yards
-    "player_rush_attempts",    # Rush attempts
+    "player_rush_yds",  # Rushing yards
+    "player_rush_attempts",  # Rush attempts
     # Receiving (WR/TE/RB)
-    "player_receptions",       # Receptions
-    "player_reception_yds",    # Reception yards
+    "player_receptions",  # Receptions
+    "player_reception_yds",  # Reception yards
     # Combo stats
-    "player_pass_rush_yds",    # Pass + Rush yards
-    "player_rush_reception_yds", # Rush + Reception yards
+    "player_pass_rush_yds",  # Pass + Rush yards
+    "player_rush_reception_yds",  # Rush + Reception yards
     # Touchdown markets
-    "player_anytime_td",       # Anytime TD scored
-    "player_1st_td",           # First TD scorer
+    "player_anytime_td",  # Anytime TD scored
+    "player_1st_td",  # First TD scorer
     # Defense
     "player_tackles_assists",  # Tackles + Assists
-    "player_sacks",            # Sacks
-    "player_defensive_interceptions", # DEF interceptions
+    "player_sacks",  # Sacks
+    "player_defensive_interceptions",  # DEF interceptions
     # Kicking
-    "player_kicking_points",   # FG/XP points
+    "player_kicking_points",  # FG/XP points
 ]
 
 NCAAF_PROPS = [
     # Passing (QB)
-    "player_pass_yds",         # Passing yards
-    "player_pass_tds",         # Passing TDs
-    "player_pass_completions", # Completions
+    "player_pass_yds",  # Passing yards
+    "player_pass_tds",  # Passing TDs
+    "player_pass_completions",  # Completions
     # Rushing (RB/QB)
-    "player_rush_yds",         # Rushing yards
-    "player_rush_attempts",    # Rush attempts
+    "player_rush_yds",  # Rushing yards
+    "player_rush_attempts",  # Rush attempts
     # Receiving (WR/TE/RB)
-    "player_receptions",       # Receptions
-    "player_reception_yds",    # Reception yards
+    "player_receptions",  # Receptions
+    "player_reception_yds",  # Reception yards
     # Combo stats
-    "player_pass_rush_yds",    # Pass + Rush yards
+    "player_pass_rush_yds",  # Pass + Rush yards
     # Touchdown markets
-    "player_anytime_td",       # Anytime TD scored
-    "player_1st_td",           # First TD scorer
+    "player_anytime_td",  # Anytime TD scored
+    "player_1st_td",  # First TD scorer
 ]
 
 NHL_PROPS = [
     # Scoring
-    "player_goals",            # Goals scored
-    "player_assists",          # Assists
-    "player_points",           # Points (goals + assists)
+    "player_goals",  # Goals scored
+    "player_assists",  # Assists
+    "player_points",  # Points (goals + assists)
     # Shooting
-    "player_shots_on_goal",    # Shots on goal
+    "player_shots_on_goal",  # Shots on goal
     # Plus/Minus
-    "player_plus_minus",       # Plus/Minus rating
+    "player_plus_minus",  # Plus/Minus rating
     # Penalty
-    "player_penalties",        # Penalty minutes
+    "player_penalties",  # Penalty minutes
     # Combo
-    "player_goals_assists",    # Goals + Assists combo
+    "player_goals_assists",  # Goals + Assists combo
 ]
 
 # Base columns (same for all rows)
@@ -233,6 +237,7 @@ DEFAULT_BOOKMAKER_ORDER = [
     "Unibet_SE",
     "Betclic",
 ]
+
 
 def parse_bookmaker_order() -> List[str]:
     """Allow overriding bookmaker column order via BOOKMAKER_ORDER env.
@@ -328,12 +333,12 @@ BOOKMAKER_TO_COLUMN = {
 def is_event_in_time_window(commence_time: str) -> bool:
     """Check if event starts within [5 min, 48 hrs] from now."""
     try:
-        event_time = datetime.fromisoformat(commence_time.replace('Z', '+00:00'))
+        event_time = datetime.fromisoformat(commence_time.replace("Z", "+00:00"))
         now = datetime.now(timezone.utc)
-        
+
         min_time = now + timedelta(minutes=EVENT_MIN_MINUTES)
         max_time = now + timedelta(hours=EVENT_MAX_HOURS)
-        
+
         return min_time <= event_time <= max_time
     except Exception as e:
         print(f"[!] Error parsing time {commence_time}: {e}")
@@ -348,34 +353,34 @@ def is_two_way_market(market_data: Dict) -> bool:
     Note: h2h_lay (Betfair exchange) is kept in data but will be filtered at EV stage
     when we can't find adequate sharp coverage for fair odds calculation.
     """
-    outcomes = market_data.get('outcomes', [])
-    market_key = market_data.get('key', '')
-    
+    outcomes = market_data.get("outcomes", [])
+    market_key = market_data.get("key", "")
+
     # Must have even number of outcomes (pairs)
     if len(outcomes) % 2 != 0:
         return False
-    
+
     # Core markets (h2h, h2h_lay, spreads, totals) should have 2-3 outcomes max
-    if market_key in ['h2h', 'h2h_lay', 'spreads', 'totals']:
+    if market_key in ["h2h", "h2h_lay", "spreads", "totals"]:
         return len(outcomes) in [2, 3]  # Allow 2-way or 3-way for core
-    
+
     # Player props: check if we have Over/Under pattern
     # Exclude Yes/No markets (1-way bets like double_double, first_basket)
-    outcome_names = [o.get('name', '').lower() for o in outcomes]
-    has_yes = any('yes' in name for name in outcome_names)
-    has_no = any('no' in name for name in outcome_names)
-    
+    outcome_names = [o.get("name", "").lower() for o in outcomes]
+    has_yes = any("yes" in name for name in outcome_names)
+    has_no = any("no" in name for name in outcome_names)
+
     # Filter out Yes/No markets completely
     if has_yes or has_no:
         return False
-    
-    has_over = any('over' in name for name in outcome_names)
-    has_under = any('under' in name for name in outcome_names)
-    
+
+    has_over = any("over" in name for name in outcome_names)
+    has_under = any("under" in name for name in outcome_names)
+
     # If it has Over/Under structure, it's valid
     if has_over and has_under:
         return True
-    
+
     # Reject anything else
     return False
 
@@ -384,11 +389,11 @@ def has_dk_and_fd_odds(bookmakers: List[Dict]) -> bool:
     """Check if this event/market has odds from BOTH Draftkings AND Fanduel.
     Filters to only markets with sharp book coverage to save API credits.
     """
-    bookie_keys = {b.get('key', '').lower() for b in bookmakers}
-    
-    has_dk = 'draftkings' in bookie_keys
-    has_fd = 'fanduel' in bookie_keys
-    
+    bookie_keys = {b.get("key", "").lower() for b in bookmakers}
+
+    has_dk = "draftkings" in bookie_keys
+    has_fd = "fanduel" in bookie_keys
+
     return has_dk and has_fd
 
 
@@ -410,18 +415,18 @@ def fetch_raw_odds(sport_key: str, markets: List[str]) -> List[Dict]:
     """
     stable_markets = ["h2h", "spreads", "totals"]
     markets_to_fetch = [m for m in stable_markets if m in markets]
-    
+
     if not markets_to_fetch:
         print(f"[!] No stable markets available")
         return []
-    
+
     print(f"[API] Fetching {len(markets_to_fetch)} stable markets: {markets_to_fetch}")
-    
+
     all_events = {}
-    
+
     try:
         markets_str = ",".join(markets_to_fetch)
-        
+
         url = f"{ODDS_API_HOST}/v4/sports/{sport_key}/odds"
         params = {
             "apiKey": API_KEY,
@@ -429,22 +434,22 @@ def fetch_raw_odds(sport_key: str, markets: List[str]) -> List[Dict]:
             "markets": markets_str,
             "oddsFormat": ODDS_FORMAT,
         }
-        
+
         print(f"[API] Requesting: {markets_str}")
         resp = requests.get(url, params=params, timeout=60)
         resp.raise_for_status()
-        
+
         events = resp.json()
-        
+
         for event in events:
             all_events[event.get("id")] = event
-        
+
         remaining = resp.headers.get("x-requests-remaining", "?")
         cost = resp.headers.get("x-requests-last", "?")
         print(f"[API] Got {len(events)} events, Cost: {cost}, Remaining: {remaining}")
-        
+
         return list(all_events.values())
-        
+
     except Exception as e:
         print(f"[!] Error fetching odds: {e}")
         return list(all_events.values())
@@ -460,21 +465,21 @@ def fetch_player_props(sport_key: str, events: List[Dict]) -> List[Dict]:
     if not props_markets:
         print(f"[!] No props defined for {sport_key}")
         return []
-    
+
     events_in_window = [e for e in events if is_event_in_time_window(e.get("commence_time", ""))]
-    
+
     if not events_in_window:
         print(f"[API] No events in time window for {sport_key}")
         return []
-    
+
     print(f"[API] Found {len(events_in_window)} events in time window for props")
-    
+
     markets_str = ",".join(props_markets)
-    
+
     try:
         for event_idx, event in enumerate(events_in_window, 1):
             event_id = event.get("id", "")
-            
+
             url = f"{ODDS_API_HOST}/v4/sports/{sport_key}/events/{event_id}/odds"
             params = {
                 "apiKey": API_KEY,
@@ -482,41 +487,49 @@ def fetch_player_props(sport_key: str, events: List[Dict]) -> List[Dict]:
                 "markets": markets_str,
                 "oddsFormat": ODDS_FORMAT,
             }
-            
+
             try:
                 resp = requests.get(url, params=params, timeout=60)
                 resp.raise_for_status()
-                
+
                 prop_event = resp.json()
                 orig_bookmakers = event.get("bookmakers", [])
                 prop_bookmakers = prop_event.get("bookmakers", [])
-                
+
                 # Merge prop bookmakers (filter rows with DK+FD will happen later)
                 for prop_bm in prop_bookmakers:
-                    orig_bm = next((b for b in orig_bookmakers if b.get("key") == prop_bm.get("key")), None)
+                    orig_bm = next(
+                        (b for b in orig_bookmakers if b.get("key") == prop_bm.get("key")), None
+                    )
                     if orig_bm:
                         orig_markets = orig_bm.get("markets", [])
                         for m in prop_bm.get("markets", []):
-                            if m.get("key") not in [om.get("key") for om in orig_markets] and is_two_way_market(m):
+                            if m.get("key") not in [
+                                om.get("key") for om in orig_markets
+                            ] and is_two_way_market(m):
                                 orig_bm["markets"].append(m)
                     else:
-                        filtered_markets = [m for m in prop_bm.get("markets", []) if is_two_way_market(m)]
+                        filtered_markets = [
+                            m for m in prop_bm.get("markets", []) if is_two_way_market(m)
+                        ]
                         if filtered_markets:
                             prop_bm["markets"] = filtered_markets
                             orig_bookmakers.append(prop_bm)
-                
+
                 event["bookmakers"] = orig_bookmakers
-                
+
                 remaining = resp.headers.get("x-requests-remaining", "?")
                 cost = resp.headers.get("x-requests-last", "?")
-                print(f"      Event {event_idx}/{len(events_in_window)}: Cost {cost}, Remaining: {remaining}")
-                
+                print(
+                    f"      Event {event_idx}/{len(events_in_window)}: Cost {cost}, Remaining: {remaining}"
+                )
+
             except Exception as e:
                 print(f"      [!] Error fetching props for event {event_id}: {e}")
                 continue
-        
+
         return events_in_window
-        
+
     except Exception as e:
         print(f"[!] Error in prop fetching: {e}")
         return events_in_window
@@ -525,36 +538,36 @@ def fetch_player_props(sport_key: str, events: List[Dict]) -> List[Dict]:
 def expand_to_rows(events: List[Dict], timestamp: str) -> List[Dict]:
     """Expand raw API events into one row per market/selection."""
     rows = []
-    
+
     for event in events:
         event_id = event.get("id", "")
         sport_key = event.get("sport_key", "")
         away_team = event.get("away_team", "")
         home_team = event.get("home_team", "")
         commence_time = event.get("commence_time", "")
-        
+
         bookmakers = event.get("bookmakers", [])
         market_data = {}
-        
+
         for bookie in bookmakers:
             bookie_key = bookie.get("key", "").lower()
             col_name = BOOKMAKER_TO_COLUMN.get(bookie_key, bookie_key.title())
-            
+
             markets = bookie.get("markets", [])
-            
+
             for market in markets:
                 market_key = market.get("key", "")
                 outcomes = market.get("outcomes", [])
-                
+
                 for outcome in outcomes:
                     outcome_name = outcome.get("name", "")
                     odds_decimal = outcome.get("price", 0)
                     point = outcome.get("point")
                     description = outcome.get("description", "")
-                    
+
                     if odds_decimal <= 1:
                         continue
-                    
+
                     # Build selection string
                     if description:  # Player prop
                         selection = f"{description} {outcome_name}"
@@ -565,9 +578,9 @@ def expand_to_rows(events: List[Dict], timestamp: str) -> List[Dict]:
                             selection = outcome_name
                     else:  # H2H
                         selection = outcome_name
-                    
+
                     key = (market_key, point if point is not None else "", selection)
-                    
+
                     if key not in market_data:
                         market_data[key] = {
                             "market": market_key,
@@ -580,14 +593,13 @@ def expand_to_rows(events: List[Dict], timestamp: str) -> List[Dict]:
                             "home_team": home_team,
                             "commence_time": commence_time,
                         }
-                    
+
                     market_data[key][col_name] = f"{odds_decimal:.3f}"
-        
+
         for row in market_data.values():
             rows.append(row)
-    
-    return rows
 
+    return rows
 
 
 def filter_rows_by_dk_fd(rows: List[Dict], verbose: bool = False) -> List[Dict]:
@@ -605,41 +617,43 @@ def append_to_csv(rows: List[Dict]):
     if not rows:
         print("[!] No rows to write")
         return
-    
+
     # Always include Pinnacle column even if not returned (user request)
     bookie_cols_in_data = {"Pinnacle"}
     for row in rows:
         for key in row.keys():
             if key not in BASE_HEADERS:
                 bookie_cols_in_data.add(key)
-    
+
     ordered_bookies = []
     for bookie in BOOKMAKER_ORDER:
         if bookie in bookie_cols_in_data:
             ordered_bookies.append(bookie)
-    
+
     unknown_bookies = sorted(bookie_cols_in_data - set(BOOKMAKER_ORDER))
     ordered_bookies.extend(unknown_bookies)
-    
+
     final_headers = BASE_HEADERS + ordered_bookies
     file_exists = RAW_CSV.exists()
-    
+
     csv_success = False
     try:
         with open(RAW_CSV, "a", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=final_headers)
-            
+
             if not file_exists:
                 writer.writeheader()
                 print(f"[CSV] Created {RAW_CSV}")
                 print(f"[CSV] Headers ({len(final_headers)}): {', '.join(final_headers[:20])}...")
-            
+
             writer.writerows(rows)
             print(f"[CSV] Appended {len(rows)} rows")
             csv_success = True
-            
+
     except PermissionError as e:
-        fallback = DATA_DIR / f"raw_odds_pure_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}.csv"
+        fallback = (
+            DATA_DIR / f"raw_odds_pure_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}.csv"
+        )
         try:
             with open(fallback, "w", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=final_headers)
@@ -651,7 +665,7 @@ def append_to_csv(rows: List[Dict]):
             print(f"[!] Error writing fallback CSV: {inner}")
     except Exception as e:
         print(f"[!] Error writing CSV: {e}")
-    
+
     # =========================================================================
     # DATABASE WRITE (fallback + redundancy)
     # =========================================================================
@@ -666,7 +680,7 @@ def append_to_csv(rows: List[Dict]):
                 if_exists="append",
                 index=False,
                 method="multi",
-                chunksize=1000
+                chunksize=1000,
             )
             print(f"[OK] {len(rows)} rows written to database (raw_odds_pure)")
         except Exception as e:
@@ -683,60 +697,59 @@ def append_to_csv(rows: List[Dict]):
 def process_sport(sport_key: str, timestamp: str) -> List[Dict]:
     """Fetch and process a single sport (for parallel execution)."""
     print(f"\n=== {sport_key.upper()} ===")
-    
-    core_markets = ['h2h', 'spreads', 'totals']
+
+    core_markets = ["h2h", "spreads", "totals"]
     print(f"[API] Fetching core markets: {core_markets}")
-    
+
     events = fetch_raw_odds(sport_key, core_markets)
     if not events:
         print(f"[!] No events for {sport_key}")
         return []
-    
+
     print(f"[OK] Got {len(events)} core market events")
-    
+
     print(f"[*] Fetching player props...")
     events_with_props = fetch_player_props(sport_key, events)
-    
+
     rows = expand_to_rows(events_with_props, timestamp)
     print(f"[OK] Expanded to {len(rows)} rows")
-    
+
     # Filter to only rows with DK+FD coverage
     rows_filtered = filter_rows_by_dk_fd(rows, verbose=True)
     removed = len(rows) - len(rows_filtered)
     print(f"[OK] Filtered to {len(rows_filtered)} rows (removed {removed} without DK+FD)")
-    
+
     return rows_filtered
 
 
 def main():
     """Main extraction flow with parallel sport fetching."""
-    
+
     # Debug output
     print(f"[DEBUG] Script location: {Path(__file__).resolve()}")
     print(f"[DEBUG] Working directory: {Path.cwd()}")
     print(f"[DEBUG] Data directory: {DATA_DIR}")
     print(f"[DEBUG] Raw CSV path: {RAW_CSV}")
     print()
-    
+
     if not API_KEY:
         print("[!] ODDS_API_KEY not set in .env")
         sys.exit(1)
-    
+
     DATA_DIR.mkdir(exist_ok=True)
     print(f"[OK] Data directory ready: {DATA_DIR}")
-    
+
     timestamp = datetime.now(timezone.utc).isoformat()
     all_rows = []
-    
+
     # Fetch all sports in parallel (4-5 concurrent threads)
     print(f"\n[PARALLEL] Fetching {len(SPORTS)} sports concurrently...")
     with ThreadPoolExecutor(max_workers=5) as executor:
         # Submit all sports at once
         futures = {
-            executor.submit(process_sport, sport_key, timestamp): sport_key
-            for sport_key in SPORTS
+            executor.submit(process_sport, sport_key, timestamp): sport_key for sport_key in SPORTS
         }
-        
+
         # Collect results as they complete
         for future in as_completed(futures):
             sport_key = futures[future]
@@ -746,9 +759,9 @@ def main():
                 print(f"[OK] {sport_key} complete: {len(rows)} rows added")
             except Exception as e:
                 print(f"[!] {sport_key} failed: {e}")
-    
+
     append_to_csv(all_rows)
-    
+
     print(f"\n[DONE] Total rows: {len(all_rows)}")
     print(f"[FILE] {RAW_CSV}")
 

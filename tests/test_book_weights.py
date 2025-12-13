@@ -3,6 +3,8 @@ Tests for the book_weights module.
 """
 
 import pytest
+import sys
+from pathlib import Path
 
 from core.book_weights import (
     MAIN_MARKET_WEIGHTS,
@@ -12,6 +14,11 @@ from core.book_weights import (
     get_book_weight,
     list_books_by_weight,
 )
+
+# Ensure src is on sys.path
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+from pipeline_v2.ratings import BOOKMAKER_RATINGS, get_sport_weight
 
 
 def test_main_market_weights():
@@ -111,10 +118,12 @@ def test_weight_scale_consistency():
                 assert 0 <= weight <= 4
 
 
-"""Test bookmaker ratings."""
-from pipeline_v2.ratings import BOOKMAKER_RATINGS
-
-
 def test_bookmaker_ratings():
-    assert BOOKMAKER_RATINGS.get("pinnacle") == 4
-    assert BOOKMAKER_RATINGS.get("draftkings") == 3
+    assert BOOKMAKER_RATINGS["pinnacle"] == 4
+    assert BOOKMAKER_RATINGS["circa"] == 4
+    assert BOOKMAKER_RATINGS["draftkings"] == 3
+    assert BOOKMAKER_RATINGS["fanduel"] == 3
+
+
+def test_sport_weight_default():
+    assert get_sport_weight("basketball_nba") == 1.0

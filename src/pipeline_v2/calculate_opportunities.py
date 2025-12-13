@@ -13,6 +13,7 @@ from pathlib import Path
 from statistics import median
 from typing import Dict, List, Tuple
 
+import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import Column, DateTime, Float, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -219,7 +220,7 @@ def read_raw_odds() -> List[Dict]:
             df = pd.read_sql("SELECT * FROM raw_odds_pure ORDER BY timestamp DESC", engine)
             if len(df) > 0:
                 rows = df.to_dict("records")
-                print(f"[OK] Read {len(rows)} rows from database (raw_odds_pure)")
+                print(f"✅ Loaded {len(rows)} rows from {RAW_CSV}")
                 return rows
             else:
                 print(f"[!] Database table raw_odds_pure is empty")

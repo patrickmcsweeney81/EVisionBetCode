@@ -1,59 +1,107 @@
-# EV_ARB Bot – Complete Setup & Deployment Guide
+# EVisionBetCode - Smart EV Betting Finder
 
-Sports betting expected value finder. Identifies EV opportunities by analyzing odds from 50+ bookmakers.
+**Purpose:** Identify expected value (EV) betting opportunities across 50+ bookmakers using sharp book weighting and intelligent prop isolation.
 
-- **Status:** Production (Pipeline V2 + FastAPI + Render)
-- **Technology Stack:** Python 3.9+, FastAPI, SQLAlchemy, PostgreSQL, React
-- **Deployment:** Render (3 services: 2 crons + 1 web API)
+- **Status:** Production (Pipeline V2 + FastAPI + React Frontend)
+- **Technology Stack:** Python 3.11+, FastAPI, React 19, PostgreSQL, Render
 - **Architecture:** Two-stage pipeline (extract → calculate) with parallel processing
-- **Last Updated:** December 13, 2025
+- **Data:** 7,420+ rows from 12 sports, 50+ bookmakers
+- **Last Updated:** December 14, 2025
 
 ---
 
-## 🚀 Quick Start (5 minutes)
+## ⚡ Quick Start (First Time: 10 minutes)
 
 ### Prerequisites
-- Python 3.9+
-- VS Code with extensions (see [VSCODE_SETUP.md](VSCODE_SETUP.md))
+- Python 3.11+
+- Node.js 18+
+- VS Code with Copilot extension
 - `.env` file with `ODDS_API_KEY` from [The Odds API](https://theoddsapi.com/)
 
-### Run These Commands
+### 1. Initial Setup (One Time)
 ```bash
-# Navigate to project
+# Setup Python environment
 cd C:\EVisionBetCode
-
-# Activate virtual environment
-& .\.venv\Scripts\Activate.ps1
-
-# Install dependencies
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 
-# Create .env file with ODDS_API_KEY
-copy .env.example .env
+# Setup Frontend
+cd C:\EVisionBetSite\frontend
+npm install
 
-# Run pipeline
-python src/pipeline_v2/extract_odds.py
-python src/pipeline_v2/calculate_opportunities.py
-
-# Start API
-uvicorn backend_api:app --reload
+# Install VS Code extensions
+code --install-extension bradlc.vscode-tailwindcss
+code --install-extension esbenp.prettier-vscode
+code --install-extension GitHub.copilot
 ```
 
-**Expected Output:**
-- Extract: 6,600+ rows (all available sports)
-- Calculate: 250+ EV opportunities
-- API: Live at http://localhost:8000/api/ev/hits
+### 2. Daily Development (3 Terminals)
+
+**Terminal 1: Backend**
+```powershell
+cd C:\EVisionBetCode
+.\.venv\Scripts\Activate.ps1
+uvicorn backend_api:app --reload
+# API running on http://localhost:8000
+```
+
+**Terminal 2: Frontend**
+```powershell
+cd C:\EVisionBetSite\frontend
+npm start
+# Frontend on http://localhost:3000 (auto hot reload)
+```
+
+**Terminal 3: Data Pipeline** (as needed)
+```powershell
+cd C:\EVisionBetCode
+.\.venv\Scripts\Activate.ps1
+python src/pipeline_v2/extract_odds.py
+python src/pipeline_v2/calculate_opportunities.py
+```
+
+### Access Points
+- **Frontend:** http://localhost:3000 (hot reload - 1 second changes!)
+- **API Docs:** http://localhost:8000/docs (Swagger UI)
+- **API Health:** http://localhost:8000/health
+
+**⏱️ Development Speed:** Edit JS → save → see changes in 1 second (hot reload)
 
 ---
 
 ## 📚 Documentation
 
-### New to This Project?
+### New to This Project? Start Here:
 
-1. **[VSCODE_SETUP.md](VSCODE_SETUP.md)** – VS Code Configuration (10 min)
-   - ✅ Install Python, Pylance, Black, Flake8, isort
-   - ✅ Select Python interpreter (`.venv\Scripts\python.exe`)
-   - ✅ Enable auto-format on save
+1. **[VSCODE_SETUP.md](../EVisionBetSite/VSCODE_SETUP.md)** – VS Code Configuration & Initial Setup
+   - Install recommended extensions
+   - Configure Python environment
+   - Set up frontend dependencies
+   - All one-time setup tasks
+
+2. **[DEVELOPMENT.md](../EVisionBetSite/DEVELOPMENT.md)** – Daily Development Workflow
+   - How to start all services (3 terminals)
+   - Frontend hot reload (1 second changes!)
+   - Backend auto-reload (save = restart)
+   - Testing & debugging tips
+   - Git workflow
+
+3. **[.github/copilot-instructions.md](.github/copilot-instructions.md)** – AI Agent Guidelines
+   - Critical patterns & conventions
+   - Data flow & architecture
+   - Common pitfalls to avoid
+   - When to use which files
+
+### Technical Deep Dives:
+
+- **[docs/PRODUCT_PLAN.md](docs/PRODUCT_PLAN.md)** – Business roadmap & ideas
+- **[docs/BUGFIX_FAIR_ODDS_DEC10_2025.md](docs/BUGFIX_FAIR_ODDS_DEC10_2025.md)** – Fair odds calculation deep dive
+- **[docs/TWO_STAGE_PIPELINE.md](docs/TWO_STAGE_PIPELINE.md)** – Pipeline architecture
+
+---
+
+## 🏗️ Project Structure
    - ✅ Test setup with first run
    - ✅ Troubleshooting for common issues
 

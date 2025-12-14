@@ -137,13 +137,6 @@ EPL_PROPS = [
     "player_goalie_saves",  # Goalie saves
     "player_tackles",  # Tackles
     "player_to_receive_card",  # Yellow/red cards
-    "player_assists",  # Assists
-    "player_goals",  # Goals scored
-    "player_blocked_shots",  # Blocked shots
-    "player_power_play_points",  # Power play points
-    "player_goal_scorer_anytime",  # Anytime goal scorer
-    "player_goal_scorer_first",  # First goal scorer
-    "player_goal_scorer_last",  # Last goal scorer
 ] if ENABLE_PROPS else []
 
 # Base columns (same for all rows)

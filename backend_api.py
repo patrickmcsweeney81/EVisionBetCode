@@ -356,9 +356,14 @@ app = FastAPI(
 # Enable CORS for frontend communication
 origins = [
     "http://localhost:3000",  # Local React dev
+    "http://localhost:3001",  # Local React dev (alternate port)
     "http://localhost:5173",  # Vite dev server
     "http://localhost:8000",  # Backend self (for direct testing)
     "http://localhost:62527",  # npx serve production build
+    "http://127.0.0.1:3000",  # Localhost via IP
+    "http://127.0.0.1:3001",  # Localhost via IP (alternate port)
+    "http://127.0.0.1:5173",  # Vite via IP
+    "http://127.0.0.1:8000",  # Backend self via IP
     "https://evisionbet.com",
     "https://www.evisionbet.com",
 ]

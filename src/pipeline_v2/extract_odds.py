@@ -132,10 +132,10 @@ EPL_PROPS = [
     "player_shots",  # Total shots
     "player_shots_on_target",  # Shots on target
     "player_goal_scorer_anytime",  # Anytime goal scorer (popular)
-    "player_goal_scorer_first",  # First goal scorer
-    "player_goal_scorer_last",  # Last goal scorer
-    "player_goalie_saves",  # Goalie saves
-    "player_tackles",  # Tackles
+    "player_first_goal_scorer",  # First goal scorer (API uses this key)
+    "player_last_goal_scorer",  # Last goal scorer (API uses this key)
+    "player_goalie_saves_alternate",  # Goalie saves (API uses _alternate)
+    "player_tackles_alternate",  # Tackles (API uses _alternate)
     "player_to_receive_card",  # Yellow/red cards
 ] if ENABLE_PROPS else []
 

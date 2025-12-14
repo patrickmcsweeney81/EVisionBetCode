@@ -357,6 +357,8 @@ app = FastAPI(
 origins = [
     "http://localhost:3000",  # Local React dev
     "http://localhost:5173",  # Vite dev server
+    "http://localhost:8000",  # Backend self (for direct testing)
+    "http://localhost:62527",  # npx serve production build
     "https://evisionbet.com",
     "https://www.evisionbet.com",
 ]

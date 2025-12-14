@@ -117,6 +117,33 @@ NCAAF_PROPS = [
 NHL_PROPS = [
     "player_points",  # Points (goals + assists) - most liquid
     "player_shots_on_goal",  # Shots on goal
+    "player_assists",  # Assists
+    "player_goals",  # Goals scored
+    "player_blocked_shots",  # Blocked shots
+    "player_power_play_points",  # Power play points
+    "player_goal_scorer_anytime",  # Anytime goal scorer
+    "player_goal_scorer_first",  # First goal scorer
+    "player_goal_scorer_last",  # Last goal scorer
+] if ENABLE_PROPS else []
+
+EPL_PROPS = [
+    "player_goals",  # Goals scored - most liquid
+    "player_assists",  # Assists
+    "player_shots",  # Total shots
+    "player_shots_on_target",  # Shots on target
+    "player_goal_scorer_anytime",  # Anytime goal scorer (popular)
+    "player_goal_scorer_first",  # First goal scorer
+    "player_goal_scorer_last",  # Last goal scorer
+    "player_goalie_saves",  # Goalie saves
+    "player_tackles",  # Tackles
+    "player_to_receive_card",  # Yellow/red cards
+    "player_assists",  # Assists
+    "player_goals",  # Goals scored
+    "player_blocked_shots",  # Blocked shots
+    "player_power_play_points",  # Power play points
+    "player_goal_scorer_anytime",  # Anytime goal scorer
+    "player_goal_scorer_first",  # First goal scorer
+    "player_goal_scorer_last",  # Last goal scorer
 ] if ENABLE_PROPS else []
 
 # Base columns (same for all rows)
@@ -359,7 +386,9 @@ def get_props_for_sport(sport_key: str) -> List[str]:
     elif "nfl" in sport_key.lower():
         return NFL_PROPS
     elif "nhl" in sport_key.lower():
-        return []  # NHL props not supported by Odds API (422 errors)
+        return NHL_PROPS
+    elif "soccer" in sport_key.lower():
+        return EPL_PROPS  # Works for EPL, UEFA, etc.
     return []
 
 

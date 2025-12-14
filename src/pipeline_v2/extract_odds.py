@@ -82,85 +82,42 @@ SPORTS = [s.strip() for s in os.getenv("SPORTS", DEFAULT_SPORTS).split(",")]
 REGIONS = os.getenv("REGIONS", "au,us,eu")
 ODDS_FORMAT = "decimal"  # Always decimal for calculations
 
-# Time filtering for events
-EVENT_MIN_MINUTES = 5  # Don't fetch events starting <5 min from now
-EVENT_MAX_HOURS = 48  # Don't fetch events starting >48 hrs from now
+# Time filtering for events (optimize credit usage)
+EVENT_MIN_MINUTES = int(os.getenv("EVENT_MIN_MINUTES", "5"))  # Don't fetch events starting <X min from now
+EVENT_MAX_HOURS = int(os.getenv("EVENT_MAX_HOURS", "24"))  # Don't fetch events >X hrs from now (24h = focus on today's games)
 
-# Most common player props for each sport
+# Storage management
+MAX_CSV_ROWS = int(os.getenv("MAX_CSV_ROWS", "50000"))  # Max rows before cleanup (50k ≈ 10MB)
+MAX_DB_DAYS = int(os.getenv("MAX_DB_DAYS", "7"))  # Keep last N days in database
+
+# Player props - REDUCED for credit efficiency (focus on most liquid markets)
+# Enable/disable via env var: ENABLE_PROPS=true (default: false to save credits)
+ENABLE_PROPS = os.getenv("ENABLE_PROPS", "false").lower() == "true"
+
 NBA_PROPS = [
-    "player_points",  # Points scored
+    "player_points",  # Points scored (most liquid)
     "player_rebounds",  # Rebounds
     "player_assists",  # Assists
-    "player_threes",  # 3-pointers made
-    "player_blocks",  # Blocks
-    "player_steals",  # Steals
-    "player_turnovers",  # Turnovers
-    "player_blocks_steals",  # Blocks + Steals combined
-    "player_points_rebounds_assists",  # PRA (triple combo)
-    "player_points_assists",  # PA combo
-    "player_points_rebounds",  # PR combo
-    "player_rebounds_assists",  # RA combo
-]
+    "player_points_rebounds_assists",  # PRA (most popular combo)
+] if ENABLE_PROPS else []
 
 NFL_PROPS = [
-    # Passing (QB)
-    "player_pass_yds",  # Passing yards
-    "player_pass_tds",  # Passing TDs
-    "player_pass_completions",  # Completions
-    "player_pass_attempts",  # Pass attempts
-    "player_pass_interceptions",  # Interceptions
-    # Rushing (RB/QB)
-    "player_rush_yds",  # Rushing yards
-    "player_rush_attempts",  # Rush attempts
-    # Receiving (WR/TE/RB)
-    "player_receptions",  # Receptions
-    "player_reception_yds",  # Reception yards
-    # Combo stats
-    "player_pass_rush_yds",  # Pass + Rush yards
-    "player_rush_reception_yds",  # Rush + Reception yards
-    # Touchdown markets
-    "player_anytime_td",  # Anytime TD scored
-    "player_1st_td",  # First TD scorer
-    # Defense
-    "player_tackles_assists",  # Tackles + Assists
-    "player_sacks",  # Sacks
-    "player_defensive_interceptions",  # DEF interceptions
-    # Kicking
-    "player_kicking_points",  # FG/XP points
-]
+    "player_pass_yds",  # Passing yards (QB - most liquid)
+    "player_rush_yds",  # Rushing yards (RB)
+    "player_reception_yds",  # Reception yards (WR/TE)
+    "player_anytime_td",  # Anytime TD (popular)
+] if ENABLE_PROPS else []
 
 NCAAF_PROPS = [
-    # Passing (QB)
-    "player_pass_yds",  # Passing yards
-    "player_pass_tds",  # Passing TDs
-    "player_pass_completions",  # Completions
-    # Rushing (RB/QB)
-    "player_rush_yds",  # Rushing yards
-    "player_rush_attempts",  # Rush attempts
-    # Receiving (WR/TE/RB)
-    "player_receptions",  # Receptions
-    "player_reception_yds",  # Reception yards
-    # Combo stats
-    "player_pass_rush_yds",  # Pass + Rush yards
-    # Touchdown markets
-    "player_anytime_td",  # Anytime TD scored
-    "player_1st_td",  # First TD scorer
-]
+    "player_pass_yds",
+    "player_rush_yds",
+    "player_reception_yds",
+] if ENABLE_PROPS else []
 
 NHL_PROPS = [
-    # Scoring
-    "player_goals",  # Goals scored
-    "player_assists",  # Assists
-    "player_points",  # Points (goals + assists)
-    # Shooting
+    "player_points",  # Points (goals + assists) - most liquid
     "player_shots_on_goal",  # Shots on goal
-    # Plus/Minus
-    "player_plus_minus",  # Plus/Minus rating
-    # Penalty
-    "player_penalties",  # Penalty minutes
-    # Combo
-    "player_goals_assists",  # Goals + Assists combo
-]
+] if ENABLE_PROPS else []
 
 # Base columns (same for all rows)
 BASE_HEADERS = [
@@ -461,8 +418,8 @@ def fetch_player_props(sport_key: str, events: List[Dict]) -> List[Dict]:
     """
     props_markets = get_props_for_sport(sport_key)
     if not props_markets:
-        print(f"[!] No props defined for {sport_key}")
-        return []
+        print(f"[!] No props defined for {sport_key} – returning original events")
+        return events  # Return core market events when props disabled
 
     events_in_window = [e for e in events if is_event_in_time_window(e.get("commence_time", ""))]
 
@@ -611,7 +568,7 @@ def filter_rows_by_dk_fd(rows: List[Dict], verbose: bool = False) -> List[Dict]:
 
 
 def append_to_csv(rows: List[Dict]):
-    """Append rows to CSV file and database (if DATABASE_URL set)."""
+    """Write rows to CSV file (REPLACE mode to prevent bloat) and database."""
     if not rows:
         print("[!] No rows to write")
         return
@@ -632,20 +589,16 @@ def append_to_csv(rows: List[Dict]):
     ordered_bookies.extend(unknown_bookies)
 
     final_headers = BASE_HEADERS + ordered_bookies
-    file_exists = RAW_CSV.exists()
 
     csv_success = False
     try:
-        with open(RAW_CSV, "a", newline="", encoding="utf-8") as f:
+        # REPLACE mode - overwrite old data to prevent bloat
+        with open(RAW_CSV, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=final_headers)
-
-            if not file_exists:
-                writer.writeheader()
-                print(f"[CSV] Created {RAW_CSV}")
-                print(f"[CSV] Headers ({len(final_headers)}): {', '.join(final_headers[:20])}...")
-
+            writer.writeheader()
             writer.writerows(rows)
-            print(f"[CSV] Appended {len(rows)} rows")
+            print(f"[CSV] Wrote {len(rows)} rows (REPLACE mode - old data cleared)")
+            print(f"[CSV] Headers ({len(final_headers)}): {', '.join(final_headers[:20])}...")
             csv_success = True
 
     except PermissionError as e:
@@ -665,13 +618,35 @@ def append_to_csv(rows: List[Dict]):
         print(f"[!] Error writing CSV: {e}")
 
     # =========================================================================
-    # DATABASE WRITE (fallback + redundancy)
+    # DATABASE WRITE with automatic cleanup (REPLACE mode to prevent bloat)
     # =========================================================================
     db_url = os.getenv("DATABASE_URL")
     if db_url:
         try:
+            from sqlalchemy import text
+            
             df = pd.DataFrame(rows)
             engine = create_engine(db_url)
+            
+            # REPLACE strategy: Clear old data before inserting new
+            with engine.connect() as conn:
+                # Option 1: Truncate table (fastest - removes all data)
+                try:
+                    conn.execute(text("TRUNCATE TABLE raw_odds_pure"))
+                    conn.commit()
+                    print(f"[DB] Truncated old data from raw_odds_pure")
+                except Exception:
+                    # Option 2: Delete with timestamp filter (keep last N hours if truncate fails)
+                    try:
+                        conn.execute(text(
+                            f"DELETE FROM raw_odds_pure WHERE timestamp < NOW() - INTERVAL '{MAX_DB_DAYS} days'"
+                        ))
+                        conn.commit()
+                        print(f"[DB] Deleted data older than {MAX_DB_DAYS} days")
+                    except Exception as del_err:
+                        print(f"[DB] Cleanup failed (table may not exist yet): {del_err}")
+            
+            # Write new data
             df.to_sql(
                 "raw_odds_pure",
                 engine,
@@ -680,7 +655,7 @@ def append_to_csv(rows: List[Dict]):
                 method="multi",
                 chunksize=1000,
             )
-            print(f"[OK] {len(rows)} rows written to database (raw_odds_pure)")
+            print(f"[OK] {len(rows)} rows written to database (REPLACE mode)")
         except Exception as e:
             print(f"[!] Database write failed: {e}")
             if not csv_success:

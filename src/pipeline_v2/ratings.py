@@ -156,6 +156,28 @@ DEFAULT_WEIGHTS = {
 }
 
 
+def get_sport_weight(sport: Optional[str]) -> float:
+    """
+    Lightweight sport scaler for sharp weighting.
+
+    Currently defaults to 1.0 for all sports but supports per-sport overrides
+    via env vars named SPORT_WEIGHT_<SPORT_KEY> (uppercased).
+    """
+
+    if not sport:
+        return 1.0
+
+    env_key = f"SPORT_WEIGHT_{sport.upper()}"
+    env_val = os.getenv(env_key)
+    if env_val:
+        try:
+            return float(env_val)
+        except ValueError:
+            print(f"[!] Invalid {env_key}={env_val}, using default 1.0")
+
+    return 1.0
+
+
 def load_weight_config(sport: Optional[str] = None) -> Dict[int, float]:
     """Load weight configuration from environment or defaults.
 

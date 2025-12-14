@@ -369,49 +369,51 @@ def remove_outliers_relative(odds_list: List[float], tolerance: float = 0.05) ->
 
 
 def fair_from_sharps(
-    sharp_books: list[dict], sport_key: str, market: str, side: str = "over"  # "over" or "under"
-) -> float | None:
+    side_a: Dict,
+    side_b: Dict,
+    bookie_cols: List[str],
+    sport_key: str | None = None,
+) -> Tuple[float, float, int]:
+    """Compute fair odds for both sides using only sharp (3⭐/4⭐) books.
+
+    - Separate weight totals per side (over/under or A/B) using bookmaker rating * sport weight.
+    - Requires at least two sharp books per side to compute a fair price.
+    - Returns (fair_a, fair_b, sharp_count) where sharp_count is the count of sharp books present
+      on the weaker-covered side (minimum of the two sides).
     """
-    Calculate fair odds from sharp books (3⭐/4⭐ only).
 
-    Uses separate weight totals for Over vs Under (critical for player props).
+    def collect(side: Dict) -> List[Tuple[str, float, int]]:
+        bucket: List[Tuple[str, float, int]] = []
+        for bk in bookie_cols:
+            rating = BOOKMAKER_RATINGS.get(bk, 0)
+            if rating < 3:
+                continue
+            price = parse_float(side.get(bk, "0"))
+            if price <= 1:
+                continue
+            bucket.append((bk, price, rating))
+        return bucket
 
-    Args:
-        sharp_books: List of dicts with 'bookmaker' and 'price' keys
-        sport_key: Sport identifier (e.g., 'basketball_nba')
-        market: Market type (e.g., 'totals', 'player_points')
-        side: 'over' or 'under' (for separate weight totals)
+    sport_key = sport_key or side_a.get("sport") or side_b.get("sport") or ""
+    sport_weight = get_sport_weight(str(sport_key)) if sport_key else 1.0
 
-    Returns:
-        Fair odds (float) or None if <2 sharp books
-    """
-    if len(sharp_books) < 2:
-        return None
+    sharp_a = collect(side_a)
+    sharp_b = collect(side_b)
 
-    sport_weight = get_sport_weight(sport_key)
-    total_weight = 0.0
-    weighted_sum = 0.0
+    def fair(bucket: List[Tuple[str, float, int]]) -> float:
+        if len(bucket) < 2:
+            return 0.0
+        total_weight = sum(rating * sport_weight for _, _, rating in bucket)
+        weighted_sum = sum((1.0 / price) * (rating * sport_weight) for _, price, rating in bucket)
+        if total_weight == 0 or weighted_sum <= 0:
+            return 0.0
+        return 1.0 / (weighted_sum / total_weight)
 
-    for book in sharp_books:
-        bookmaker = book.get("bookmaker")
-        price = book.get("price")
+    fair_a = fair(sharp_a)
+    fair_b = fair(sharp_b)
+    sharp_count = min(len(sharp_a), len(sharp_b))
 
-        if not bookmaker or not price:
-            continue
-
-        book_rating = BOOKMAKER_RATINGS.get(bookmaker, 0)
-        if book_rating < 3:  # Only 3⭐/4⭐
-            continue
-
-        weight = book_rating * sport_weight
-        total_weight += weight
-        weighted_sum += (1.0 / price) * weight
-
-    if total_weight == 0:
-        return None
-
-    fair_implied_prob = weighted_sum / total_weight
-    return 1.0 / fair_implied_prob if fair_implied_prob > 0 else None
+    return fair_a, fair_b, sharp_count
 
 
 def process_two_way_markets(
@@ -447,7 +449,7 @@ def process_two_way_markets(
             stats["missing_sides"] += 1
             continue
 
-        fair_a, fair_b, sharp_count = fair_from_sharps(side_a, side_b, bookie_cols)
+        fair_a, fair_b, sharp_count = fair_from_sharps(side_a, side_b, bookie_cols, sport)
         if fair_a <= 1 or fair_b <= 1 or sharp_count == 0:
             stats["no_sharps"] += 1
             continue

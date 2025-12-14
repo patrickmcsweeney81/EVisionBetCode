@@ -13,8 +13,9 @@ if not DATABASE_URL:
     print("❌ DATABASE_URL not found in .env")
     exit(1)
 
-# Read SQL file
-with open("create_tables.sql", "r") as f:
+# Read SQL file (use enhanced schema by default)
+sql_file = "create_tables_enhanced.sql"
+with open(sql_file, "r") as f:
     sql_content = f.read()
 
 # Connect and execute

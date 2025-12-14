@@ -1,4 +1,4 @@
-"""
+﻿"""
 FastAPI backend service for EV_ARB Bot
 Exposes PostgreSQL data to frontend via REST API
 Runs on Render as a Web Service (not cron job)
@@ -19,6 +19,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import (
     Column,
     DateTime,
+    Boolean,
     Float,
     Integer,
     String,
@@ -33,7 +34,7 @@ load_dotenv()
 
 # Locate data directory (mirrors pipeline get_data_dir)
 def get_data_dir():
-    """Find data directory – works locally and on Render."""
+    """Find data directory â€“ works locally and on Render."""
     cwd = Path.cwd()
     # Normalize duplicate /src/src patterns
     cwd_str = str(cwd).replace("\\src\\src", "\\src").replace("/src/src", "/src")
@@ -88,7 +89,7 @@ def verify_admin_password(password: str) -> bool:
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    print("⚠️  DATABASE_URL not set - running in CSV-only mode (no database)")
+    print("âš ï¸  DATABASE_URL not set - running in CSV-only mode (no database)")
     engine = None
 else:
     # Replace postgres:// with postgresql:// for SQLAlchemy 1.4+
@@ -98,8 +99,8 @@ else:
     try:
         engine = create_engine(DATABASE_URL, echo=False)
     except Exception as e:
-        print(f"⚠️  Database connection error: {e}")
-        print("⚠️  Starting app without database - API will serve CSV only")
+        print(f"âš ï¸  Database connection error: {e}")
+        print("âš ï¸  Starting app without database - API will serve CSV only")
         engine = None
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine) if engine else None
@@ -1135,3 +1136,4 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+

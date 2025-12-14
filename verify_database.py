@@ -3,6 +3,7 @@ Verify that data is flowing into the Render PostgreSQL database
 """
 import os
 from datetime import datetime, timedelta
+
 from dotenv import load_dotenv
 
 load_dotenv()

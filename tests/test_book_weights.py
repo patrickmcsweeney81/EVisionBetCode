@@ -2,9 +2,10 @@
 Tests for the book_weights module.
 """
 
-import pytest
 import sys
 from pathlib import Path
+
+import pytest
 
 from core.book_weights import (
     MAIN_MARKET_WEIGHTS,

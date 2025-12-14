@@ -2,6 +2,7 @@
 Execute create_tables.sql against Render PostgreSQL database
 """
 import os
+
 from dotenv import load_dotenv
 
 # Load environment
@@ -19,7 +20,7 @@ with open("create_tables.sql", "r") as f:
 # Connect and execute
 try:
     import psycopg2
-    
+
     # Parse connection string
     conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()

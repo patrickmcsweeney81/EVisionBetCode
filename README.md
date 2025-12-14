@@ -65,6 +65,13 @@ uvicorn backend_api:app --reload
    - Common tasks
    - Render deployment guide
 
+3. **[OPTIMIZATION_GUIDE.md](OPTIMIZATION_GUIDE.md)** – ⚡ API Credit & Storage Optimization (NEW!)
+   - Reduce API costs by 90% (props management, time windows)
+   - REPLACE mode vs APPEND mode (prevent storage bloat)
+   - Configuration for dev/prod/peak seasons
+   - Player props cost/benefit analysis
+   - Monthly cost analysis & monitoring
+
 ### Deep Dives
 
 - **[src/pipeline_v2/README.md](src/pipeline_v2/README.md)** – Pipeline Architecture

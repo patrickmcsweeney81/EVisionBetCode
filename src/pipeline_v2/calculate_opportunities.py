@@ -599,8 +599,27 @@ def process_two_way_markets(
 
 def build_headers(bookie_cols: List[str]) -> List[str]:
     # Ensure Pinnacle column is present even if empty
-    if "Pinnacle" not in bookie_cols:
-        bookie_cols = ["Pinnacle"] + bookie_cols
+    cols = list(bookie_cols)
+    if "Pinnacle" not in cols:
+        cols = ["Pinnacle"] + cols
+
+    # Reorder: place Playup, Betright, Dabble_Au immediately after Boombet
+    def reorder(cols_in: List[str]) -> List[str]:
+        desired_after_boombet = ["Playup", "Betright", "Dabble_Au"]
+        # Remove targets if present to avoid duplicates
+        remaining = [c for c in cols_in if c not in desired_after_boombet]
+        try:
+            idx = remaining.index("Boombet") + 1
+        except ValueError:
+            idx = len(remaining)
+        present = [c for c in desired_after_boombet if c in cols_in]
+        # Insert in the specified order
+        for name in reversed(present):
+            remaining.insert(idx, name)
+        return remaining
+
+    cols = reorder(cols)
+
     # Use display names to align with frontend
     base = [
         "Start Time",
@@ -617,7 +636,7 @@ def build_headers(bookie_cols: List[str]) -> List[str]:
         "Prob",
         "Stake",
     ]
-    return base + bookie_cols
+    return base + cols
 
 
 def format_sport_abbrev(sport: str) -> str:

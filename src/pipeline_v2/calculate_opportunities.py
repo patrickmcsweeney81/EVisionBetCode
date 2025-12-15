@@ -103,7 +103,7 @@ def get_data_dir():
 
 DATA_DIR = get_data_dir()
 RAW_CSV = DATA_DIR / "raw_odds_pure.csv"
-EV_CSV = DATA_DIR / "ev_opportunities.csv"
+EV_CSV = DATA_DIR / "ev_hits.csv"
 
 # Database connection (optional - only if DATABASE_URL is set)
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -345,10 +345,78 @@ def extract_sides(rows: List[Dict]) -> Tuple[Dict, Dict]:
     return None, None
 
 
+ORDERED_BOOKIE_COLS = [
+    "Pinnacle",
+    "Betfair_AU",
+    "Draftkings",
+    "Fanduel",
+    "Betmgm",
+    "Betonline",
+    "Bovada",
+    "Lowvig",
+    "Mybookie",
+    "Betrivers",
+    "Marathonbet",
+    "Betsson",
+    "Nordicbet",
+    "Sportsbet",
+    "Pointsbet",
+    "Tab",
+    "Tabtouch",
+    "Unibet_AU",
+    "Ladbrokes_AU",
+    "Neds",
+    "Betr",
+    "Boombet",
+    "Williamhill_US",
+    "Fanatics",
+    "Ballybet",
+    "Betparx",
+    "Espnbet",
+    "Fliff",
+    "Hardrockbet",
+    "Rebet",
+    "Williamhill_UK",
+    "Codere",
+    "Tipico",
+    "Leovegas",
+    "Parionssport",
+    "Winamax_FR",
+    "Winamax_DE",
+    "Unibet_FR",
+    "Unibet_NL",
+    "Unibet_SE",
+    "Betclic",
+    "Betanysports",
+    "Betright",
+    "Betus",
+    "Coolbet",
+    "Dabble_Au",
+    "Everygame",
+    "Gtbets",
+    "Matchbook",
+    "Onexbet",
+    "Playup",
+    "Pmu_Fr",
+    "Sport888",
+]
+
+
 def get_bookie_columns(rows: List[Dict]) -> List[str]:
     if not rows:
         return []
-    return [c for c in rows[0].keys() if c not in META_COLS]
+
+    present: set[str] = set()
+    for row in rows:
+        for key in row.keys():
+            if key not in META_COLS:
+                present.add(key)
+
+    # Keep the explicit order above, dropping any missing columns, and always ensure Pinnacle first.
+    ordered = [bk for bk in ORDERED_BOOKIE_COLS if bk in present]
+    if "Pinnacle" not in ordered:
+        ordered = ["Pinnacle"] + ordered
+    return ordered
 
 
 def remove_outliers_relative(odds_list: List[float], tolerance: float = 0.05) -> List[float]:
@@ -457,13 +525,17 @@ def process_two_way_markets(
         sel_a = side_a.get("selection", "")
         sel_b = side_b.get("selection", "")
 
+        # Combine away/home teams into Teams column
+        away = side_a.get("away_team", "")
+        home = side_a.get("home_team", "")
+        teams = f"{away} V {home}" if away and home else ""
+
         base_meta = {
             "timestamp": side_a.get("timestamp", ""),
             "sport": sport,
             "event_id": event_id,
-            "away_team": side_a.get("away_team", ""),
-            "home_team": side_a.get("home_team", ""),
             "commence_time": side_a.get("commence_time", ""),
+            "teams": teams,
             "market": market,
             "line": point,
             "sharp_book_count": sharp_count,
@@ -529,62 +601,142 @@ def build_headers(bookie_cols: List[str]) -> List[str]:
     # Ensure Pinnacle column is present even if empty
     if "Pinnacle" not in bookie_cols:
         bookie_cols = ["Pinnacle"] + bookie_cols
+    # Use display names to align with frontend
     base = [
-        "timestamp",
-        "sport",
-        "event_id",
-        "away_team",
-        "home_team",
-        "commence_time",
-        "market",
-        "player",
-        "line",
-        "selection",
-        "sharp_book_count",
-        "best_book",
-        "odds_decimal",
-        "fair_odds",
-        "ev_percent",
-        "implied_prob",
-        "stake",
+        "Start Time",
+        "Sport",
+        "Teams",
+        "Market",
+        "Line",
+        "Selection",
+        "Sharps",
+        "Book",
+        "Odds",
+        "Fair",
+        "EV%",
+        "Prob",
+        "Stake",
     ]
     return base + bookie_cols
 
 
+def format_sport_abbrev(sport: str) -> str:
+    """Convert sport key to abbreviation."""
+    sport_map = {
+        "basketball_nba": "NBA",
+        "basketball_nbl": "NBL",
+        "americanfootball_nfl": "NFL",
+        "americanfootball_ncaaf": "NCAAF",
+        "icehockey_nhl": "NHL",
+        "baseball_mlb": "MLB",
+        "soccer_epl": "EPL",
+        "soccer_uefa_champs_league": "UCL",
+        "tennis_atp": "ATP",
+        "tennis_wta": "WTA",
+        "cricket_big_bash": "BBL",
+        "cricket_ipl": "IPL",
+    }
+    return sport_map.get(sport, sport[:3].upper())
+
+
+def format_market_name(market: str) -> str:
+    """Format market name: remove player_, underscores to spaces, title case."""
+    if market == "h2h":
+        return "H2H"
+    if market == "spreads":
+        return "Line"
+    if market.startswith("player_"):
+        market = market.replace("player_", "")
+    # Replace underscores with spaces and title case
+    return " ".join(word.capitalize() for word in market.split("_"))
+
+
+def format_commence_time(date_str: str) -> str:
+    """Format ISO datetime to HH:MM DD/MM/YY."""
+    if not date_str:
+        return ""
+    try:
+        # Parse ISO format (2025-12-16T01:15:00Z)
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        # Format as HH:MM DD/MM/YY
+        return dt.strftime("%H:%M %d/%m/%y")
+    except Exception:
+        return date_str
+
+
 def write_opportunities(opportunities: List[Dict], headers: List[str]):
-    """Write EV opportunities to CSV and database."""
+    """Write EV opportunities to CSV and database.
+
+    If the primary CSV is locked (e.g., opened in Excel), write to a fallback
+    filename with a timestamp suffix so users can keep their file open.
+    """
     if not opportunities:
         print("[!] No opportunities to write")
         return
 
-    # Write to CSV (backup) - format numbers for human readability
-    try:
-        with open(EV_CSV, "w", newline="", encoding="utf-8") as f:
+    def format_row(opp: Dict) -> Dict:
+        # Map internal field names to display headers
+        field_map = {
+            "Start Time": "commence_time",
+            "Sport": "sport",
+            "Teams": "teams",
+            "Market": "market",
+            "Line": "line",
+            "Selection": "selection",
+            "Sharps": "sharp_book_count",
+            "Book": "best_book",
+            "Odds": "odds_decimal",
+            "Fair": "fair_odds",
+            "EV%": "ev_percent",
+            "Prob": "implied_prob",
+            "Stake": "stake",
+        }
+        
+        row: Dict[str, str] = {}
+        for col in headers:
+            # Get the internal field name, or use col as-is for bookmaker columns
+            internal_col = field_map.get(col, col)
+            val = opp.get(internal_col, "")
+            
+            if col == "Start Time" and val:
+                row[col] = format_commence_time(val)
+            elif col == "Sport" and val:
+                row[col] = format_sport_abbrev(val)
+            elif col == "Market" and val:
+                row[col] = format_market_name(val)
+            elif col == "EV%" and isinstance(val, (int, float)):
+                row[col] = f"{val:.2f}%"
+            elif col == "Prob" and isinstance(val, (int, float)):
+                row[col] = f"{val:.2f}%"
+            elif col == "Stake" and isinstance(val, (int, float)):
+                row[col] = f"${int(val)}"
+            elif col in ["Odds", "Fair"] and isinstance(val, (int, float)):
+                row[col] = f"{val:.4f}"
+            elif isinstance(val, float):
+                row[col] = f"{val:.4f}" if val > 0 else ""
+            else:
+                row[col] = val if val else ""
+        return row
+
+    def write_csv(path: Path):
+        with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=headers)
             writer.writeheader()
-
             for opp in opportunities:
-                # Format row for CSV display
-                row = {}
-                for col in headers:
-                    val = opp.get(col, "")
-                    if col == "ev_percent" and isinstance(val, (int, float)):
-                        row[col] = f"{val:.2f}%"
-                    elif col == "implied_prob" and isinstance(val, (int, float)):
-                        row[col] = f"{val:.2f}%"
-                    elif col == "stake" and isinstance(val, (int, float)):
-                        row[col] = f"${int(val)}"
-                    elif col in ["odds_decimal", "fair_odds"] and isinstance(val, (int, float)):
-                        row[col] = f"{val:.4f}"
-                    elif isinstance(val, float):
-                        row[col] = f"{val:.4f}" if val > 0 else ""
-                    else:
-                        row[col] = val if val else ""
-                writer.writerow(row)
+                writer.writerow(format_row(opp))
 
+    # Try primary CSV; if locked, write a fallback file
+    try:
+        write_csv(EV_CSV)
         print(f"✅ Wrote {len(opportunities)} EV rows to {EV_CSV}")
     except Exception as e:
-        print(f"[!] Error writing CSV: {e}")
+        print(f"[!] Error writing CSV (likely locked): {e}")
+        fallback = EV_CSV.with_name(f"ev_hits_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv")
+        try:
+            write_csv(fallback)
+            print(f"✅ Wrote fallback CSV to {fallback}")
+        except Exception as e2:
+            print(f"[!] Fallback CSV write failed: {e2}")
 
     # Write to database (optional - only if connected)
     if SessionLocal and engine:

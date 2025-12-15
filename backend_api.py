@@ -65,7 +65,7 @@ def get_data_dir():
 
 
 DATA_DIR = get_data_dir()
-EV_CSV = DATA_DIR / "ev_opportunities.csv"
+EV_CSV = DATA_DIR / "ev_hits.csv"
 RAW_CSV = DATA_DIR / "raw_odds_pure.csv"
 
 # ============================================================================
@@ -415,9 +415,15 @@ async def get_ev_hits(
     """
 
     def csv_fallback():
-        # Read from ev_opportunities.csv when database is unavailable or empty
+        # Read from ev_hits.csv when database is unavailable or empty
         if not EV_CSV.exists():
-            return []
+            return [], 0
+
+        def first(row, keys):
+            for k in keys:
+                if k in row and row.get(k) not in (None, ""):
+                    return row.get(k)
+            return None
 
         def parse_float(val):
             if val is None:
@@ -427,10 +433,35 @@ async def get_ev_hits(
             s = str(val).strip()
             if s == "":
                 return None
-            # Remove percent or dollar symbols if present in CSV formatting
+            # Remove common adornments
+            s_raw = s
             s = s.replace("%", "").replace("$", "")
             try:
-                return float(s)
+                num = float(s)
+                # If original had % and value likely in percent, convert to decimal
+                if "%" in s_raw:
+                    return num / 100.0
+                return num
+            except Exception:
+                return None
+
+        def parse_percent(val):
+            if val is None:
+                return None
+            if isinstance(val, (int, float)):
+                # Heuristic: if >= 1.0 assume already decimal? Keep as-is
+                return float(val) if float(val) <= 1.0 else float(val) / 100.0
+            s = str(val).strip()
+            if s == "":
+                return None
+            if s.endswith("%"):
+                try:
+                    return float(s[:-1]) / 100.0
+                except Exception:
+                    return None
+            try:
+                num = float(s)
+                return num if num <= 1.0 else num / 100.0
             except Exception:
                 return None
 
@@ -439,38 +470,55 @@ async def get_ev_hits(
             reader = csv.DictReader(f)
             for row in reader:
                 try:
-                    ev_val = parse_float(row.get("ev_percent")) or 0.0
+                    # Support both internal headers and display headers
+                    sport_val = first(row, ["sport", "Sport"]) or ""
+                    if sport and sport_val and sport_val != sport:
+                        continue
+
+                    teams = first(row, ["teams", "Teams"]) or ""
+                    away_team_val, home_team_val = None, None
+                    if " V " in teams:
+                        parts = teams.split(" V ", 1)
+                        away_team_val = parts[0].strip()
+                        home_team_val = parts[1].strip()
+                    else:
+                        away_team_val = first(row, ["away_team", "Away Team"]) or None
+                        home_team_val = first(row, ["home_team", "Home Team"]) or None
+
+                    ev_val = parse_percent(first(row, ["ev_percent", "EV%", "ev%", "ev"])) or 0.0
                     if ev_val < min_ev:
                         continue
-                    if sport and row.get("sport") != sport:
-                        continue
-                    best_book_val = row.get("best_book") or row.get("bookmaker")
-                    # CSV writes odds_decimal; also accept best_odds if present
-                    best_odds_val = parse_float(row.get("best_odds"))
-                    if best_odds_val is None:
-                        best_odds_val = parse_float(row.get("odds_decimal"))
+
+                    best_book_val = first(row, ["best_book", "Book", "bookmaker"]) or ""
+                    best_odds_val = parse_float(first(row, ["best_odds", "odds_decimal", "Odds"]))
+                    fair_val = parse_float(first(row, ["fair_odds", "Fair"]))
+                    prob_val = parse_percent(first(row, ["implied_prob", "Prob"]))
+                    stake_val = parse_float(first(row, ["stake", "Stake"]))
+                    sharps_val = parse_float(first(row, ["sharp_book_count", "Sharps"])) or 0
+                    line_val = parse_float(first(row, ["point", "Line"]))
+
                     rows.append(
                         {
-                            "sport": row.get("sport"),
-                            "event_id": row.get("event_id"),
-                            "away_team": row.get("away_team"),
-                            "home_team": row.get("home_team"),
-                            "commence_time": row.get("commence_time"),
-                            "market": row.get("market"),
-                            "point": parse_float(row.get("point")),
-                            "selection": row.get("selection"),
-                            "player": row.get("player"),
-                            "fair_odds": parse_float(row.get("fair_odds")),
+                            "sport": sport_val,
+                            "event_id": first(row, ["event_id", "Event ID"]) or None,
+                            "away_team": away_team_val,
+                            "home_team": home_team_val,
+                            "commence_time": first(row, ["commence_time", "Start Time"]) or None,
+                            "market": first(row, ["market", "Market"]) or None,
+                            "point": line_val,
+                            "selection": first(row, ["selection", "Selection"]) or None,
+                            "player": first(row, ["player", "Player"]) or None,
+                            "fair_odds": fair_val,
                             "best_book": best_book_val,
                             "best_odds": best_odds_val,
                             "ev_percent": ev_val,
-                            "sharp_book_count": int(parse_float(row.get("sharp_book_count")) or 0),
-                            "implied_prob": parse_float(row.get("implied_prob")),
-                            "stake": parse_float(row.get("stake")),
-                            "kelly_fraction": parse_float(row.get("kelly_fraction")),
-                            "detected_at": row.get("detected_at"),
-                            "created_at": row.get("created_at"),
-                            # Aliases for backward compatibility with frontend
+                            "sharp_book_count": int(sharps_val or 0),
+                            "implied_prob": prob_val,
+                            "stake": stake_val,
+                            "kelly_fraction": parse_float(first(row, ["kelly_fraction"])) or None,
+                            "detected_at": first(row, ["detected_at"]) or None,
+                            "created_at": first(row, ["created_at"]) or None,
+                            # Aliases for frontend convenience
                             "bookmaker": best_book_val,
                             "odds_decimal": best_odds_val,
                         }
@@ -554,12 +602,33 @@ async def get_ev_hits(
         }
 
     except Exception as e:
-        return {
-            "error": str(e),
-            "hits": [],
-            "count": 0,
-            "last_updated": datetime.utcnow().isoformat(),
-        }
+        # Fallback to CSV if database query fails for any reason
+        try:
+            hits_csv, total_count = csv_fallback()
+            last_updated = None
+            if hits_csv:
+                timestamps = [
+                    h.get("detected_at") or h.get("created_at")
+                    for h in hits_csv
+                    if h.get("detected_at") or h.get("created_at")
+                ]
+                if timestamps:
+                    last_updated = max(timestamps)
+            return {
+                "hits": hits_csv,
+                "count": len(hits_csv),
+                "total_count": total_count,
+                "last_updated": last_updated or datetime.utcnow().isoformat(),
+                "filters": {"limit": limit, "offset": offset, "min_ev": min_ev, "sport": sport},
+                "warning": f"db_error_fallback: {str(e)}",
+            }
+        except Exception:
+            return {
+                "error": str(e),
+                "hits": [],
+                "count": 0,
+                "last_updated": datetime.utcnow().isoformat(),
+            }
 
 
 @app.get("/api/ev/summary")
@@ -892,7 +961,7 @@ async def download_ev_csv(authorization: Optional[str] = Header(None)):
             return StreamingResponse(
                 iter([b"No opportunities found\n"]),
                 media_type="text/csv",
-                headers={"Content-Disposition": "attachment; filename=ev_opportunities.csv"},
+                headers={"Content-Disposition": "attachment; filename=ev_hits.csv"},
             )
 
         # Build CSV in memory

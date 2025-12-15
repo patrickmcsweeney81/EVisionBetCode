@@ -261,12 +261,28 @@ def get_sharp_books_only(weights: Optional[Dict[int, float]] = None) -> Dict[str
     return sharps
 
 
-def get_target_books_only() -> list:
-    """Return only 1⭐ books (target bookmakers).
+AU_TARGET_BOOKS = [
+    # AU corporates (primary targets)
+    "Sportsbet",
+    "Pointsbet",
+    "Tab",
+    "Tabtouch",
+    "Unibet_AU",
+    "Ladbrokes_AU",
+    "Neds",
+    "Betr",
+    "Boombet",
+    # Include local exchange as a target for availability/visibility
+    "Betfair_AU",
+]
 
-    These are the books where we look for EV opportunities.
+
+def get_target_books_only() -> list:
+    """Return AU target books only (plus Betfair_AU).
+
+    These are the books where we surface EV opportunities for the frontend.
     """
-    return [book for book, rating in BOOKMAKER_RATINGS.items() if rating == 1]
+    return AU_TARGET_BOOKS.copy()
 
 
 def print_rating_summary():

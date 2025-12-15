@@ -9,18 +9,22 @@ services:
     buildCommand: pip install --upgrade pip && pip install -e .
     startCommand: uvicorn backend_api:app --host 0.0.0.0 --port $PORT
     envVars:
+      # REQUIRED: Get from https://the-odds-api.com/
       - key: ODDS_API_KEY
         sync: false
+      # REQUIRED: Auto-populated from evisionbet-db database below
       - key: DATABASE_URL
         fromDatabase:
           name: evisionbet-db
           property: connectionString
+      # OPTIONAL: SHA256 hash of admin password for protected endpoints
+      # Generate with: python -c "import hashlib; print(hashlib.sha256('yourpassword'.encode()).hexdigest())"
       - key: ADMIN_PASSWORD_HASH
         sync: false
       - key: PYTHON_VERSION
         value: "3.9.18"
 
-  # Cron job - Extract odds
+  # Cron job - Extract odds from The Odds API
   - type: cron
     name: evision-extract-odds
     env: python
@@ -31,14 +35,16 @@ services:
     buildCommand: pip install --upgrade pip && pip install -e .
     startCommand: python src/pipeline_v2/extract_odds.py
     envVars:
+      # REQUIRED: Get from https://the-odds-api.com/
       - key: ODDS_API_KEY
         sync: false
+      # REQUIRED: Auto-populated from evisionbet-db database below
       - key: DATABASE_URL
         fromDatabase:
           name: evisionbet-db
           property: connectionString
 
-  # Cron job - Calculate EV
+  # Cron job - Calculate EV opportunities
   - type: cron
     name: evision-calculate-ev
     env: python
@@ -49,6 +55,7 @@ services:
     buildCommand: pip install --upgrade pip && pip install -e .
     startCommand: python src/pipeline_v2/calculate_opportunities.py
     envVars:
+      # REQUIRED: Auto-populated from evisionbet-db database below
       - key: DATABASE_URL
         fromDatabase:
           name: evisionbet-db

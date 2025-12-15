@@ -802,6 +802,17 @@ def main():
     print(f"[DEBUG] Raw CSV exists: {RAW_CSV.exists()}")
     print()
 
+    # Check if raw odds file exists and is recent
+    if not RAW_CSV.exists():
+        print("[!] ERROR: Raw odds CSV not found. Extract odds pipeline must run first.")
+        sys.exit(1)
+    
+    # Check file age - warn if older than 1 hour
+    raw_age_seconds = (datetime.utcnow() - datetime.fromtimestamp(RAW_CSV.stat().st_mtime)).total_seconds()
+    if raw_age_seconds > 3600:
+        print(f"[!] WARNING: Raw odds file is {raw_age_seconds/60:.1f} minutes old (expected < 60 min)")
+        print("[!] Extract odds pipeline may not be running correctly")
+
     raw_rows = read_raw_odds()
     if not raw_rows:
         sys.exit(1)

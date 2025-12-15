@@ -379,12 +379,44 @@ app.add_middleware(
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for Render."""
-    return {
+    """Health check endpoint for Render with pipeline status."""
+    health_data = {
         "status": "healthy",
         "version": "2.0",
         "database": "connected" if os.getenv("DATABASE_URL") else "csv_fallback",
+        "pipelines": {}
     }
+    
+    # Check if CSV files exist and get their last modified times
+    if EV_CSV.exists():
+        ev_mtime = datetime.fromtimestamp(EV_CSV.stat().st_mtime)
+        health_data["pipelines"]["calculate_ev"] = {
+            "status": "healthy",
+            "last_run": ev_mtime.isoformat(),
+            "age_seconds": (datetime.now() - ev_mtime).total_seconds()
+        }
+    else:
+        health_data["pipelines"]["calculate_ev"] = {
+            "status": "missing",
+            "last_run": None,
+            "age_seconds": None
+        }
+    
+    if RAW_CSV.exists():
+        raw_mtime = datetime.fromtimestamp(RAW_CSV.stat().st_mtime)
+        health_data["pipelines"]["extract_odds"] = {
+            "status": "healthy",
+            "last_run": raw_mtime.isoformat(),
+            "age_seconds": (datetime.now() - raw_mtime).total_seconds()
+        }
+    else:
+        health_data["pipelines"]["extract_odds"] = {
+            "status": "missing",
+            "last_run": None,
+            "age_seconds": None
+        }
+    
+    return health_data
 
 
 @app.get("/")

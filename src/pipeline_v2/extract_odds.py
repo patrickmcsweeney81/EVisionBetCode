@@ -335,9 +335,10 @@ def is_two_way_market(market_data: Dict) -> bool:
     if len(outcomes) % 2 != 0:
         return False
 
-    # Core markets (h2h, h2h_lay, spreads, totals) should have 2-3 outcomes max
+    # CRITICAL: Core markets (h2h, h2h_lay, spreads, totals) must have EXACTLY 2 outcomes
+    # This filters out 3-way markets with draws (Home/Away/Draw)
     if market_key in ["h2h", "h2h_lay", "spreads", "totals"]:
-        return len(outcomes) in [2, 3]  # Allow 2-way or 3-way for core
+        return len(outcomes) == 2  # ONLY 2-way markets allowed
 
     # Player props: check if we have Over/Under pattern
     # Exclude Yes/No markets (1-way bets like double_double, first_basket)

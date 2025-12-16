@@ -26,7 +26,7 @@ data/
 !core/__init__.py
 
 # IDE/project files
-.vscode/
+# .vscode/ - now tracked for workspace configuration
 .idea/
 *.swp
 *.swo
@@ -45,6 +45,7 @@ test_*.txt
 # API responses
 *.json
 !package.json
+!.vscode/*.json
 
 # OS
 .DS_Store

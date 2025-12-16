@@ -305,6 +305,9 @@ def extract_sides(rows: List[Dict]) -> Tuple[Dict, Dict]:
 
     If multiple rows exist for same side (different timestamps),
     prefer the one with most bookmaker coverage.
+    
+    For h2h markets: reject if 3+ unique selections (e.g., Home/Away/Draw).
+    Always requires exactly 2 sides for valid 2-way market.
     """
 
     def is_over(sel: str) -> bool:
@@ -327,6 +330,11 @@ def extract_sides(rows: List[Dict]) -> Tuple[Dict, Dict]:
                     pass
         return count
 
+    # CRITICAL: Always check for exactly 2 selections (reject 3-way markets with draw)
+    unique_selections = set(r.get("selection", "") for r in rows)
+    if len(unique_selections) != 2:
+        return None, None
+
     # Get all over/under rows
     over_rows = [r for r in rows if is_over(r.get("selection", ""))]
     under_rows = [r for r in rows if is_under(r.get("selection", ""))]
@@ -338,9 +346,10 @@ def extract_sides(rows: List[Dict]) -> Tuple[Dict, Dict]:
     if over_row and under_row:
         return over_row, under_row
 
-    # Fallback: take first two distinct selections
+    # Fallback: use first two rows (already validated to have exactly 2 selections)
     if len(rows) >= 2:
-        return rows[0], rows[1]
+        sorted_rows = sorted(rows, key=count_bookmaker_odds, reverse=True)
+        return sorted_rows[0], sorted_rows[1]
 
     return None, None
 

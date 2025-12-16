@@ -66,12 +66,6 @@
         "panel": "dedicated"
       },
       "problemMatcher": {
-        "pattern": {
-          "regexp": "^.*$",
-          "file": 1,
-          "location": 2,
-          "message": 3
-        },
         "background": {
           "activeOnStart": true,
           "beginsPattern": "^.*Uvicorn running.*$",

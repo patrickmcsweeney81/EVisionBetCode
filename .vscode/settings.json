@@ -23,15 +23,12 @@
     "--line-length=100"
   ],
   
-  // Linting
-  "python.linting.enabled": true,
-  "python.linting.flake8Enabled": true,
-  "python.linting.flake8Args": [
+  // Linting (using extension-based configuration)
+  "flake8.args": [
     "--max-line-length=100",
     "--exclude=.git,__pycache__,venv,.venv,data"
   ],
-  "python.linting.pylintEnabled": true,
-  "python.linting.pylintArgs": [
+  "pylint.args": [
     "--max-line-length=100",
     "--disable=C0111,C0103,W0212,R0913"
   ],

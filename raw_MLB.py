@@ -1,6 +1,6 @@
 """
-Extract raw NFL market data directly from Odds API (no filtering or calculations)
-Fetches current NFL odds, outputs one row per market.
+Extract raw MLB market data directly from Odds API (no filtering or calculations)
+Fetches current MLB odds, outputs one row per market.
 Includes half-point normalization for spreads and totals.
 """
 
@@ -22,17 +22,17 @@ API_KEY = os.getenv("ODDS_API_KEY", "")
 # Data paths
 DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
-OUTPUT_FILE = DATA_DIR / "raw_NFL.csv"
+OUTPUT_FILE = DATA_DIR / "raw_MLB.csv"
 
 # API Configuration
 ODDS_API_HOST = "https://api.the-odds-api.com"
-SPORT_KEY = "americanfootball_nfl"
-REGIONS = "au,us,eu"  # Include all regions for best coverage
+SPORT_KEY = "baseball_mlb"
+REGIONS = "au,us,eu"
 ODDS_FORMAT = "decimal"
 
 # Event time filtering
 EVENT_MIN_MINUTES = 5
-EVENT_MAX_HOURS = 24
+EVENT_MAX_HOURS = 48
 
 
 def parse_float(s) -> float:
@@ -49,11 +49,6 @@ def normalize_to_half_point(value: float) -> float:
     """
     Normalize spread/total to nearest half-point increment (e.g., 5.5, 6.0, 6.5).
     This ensures alignment across bookmakers for fair odds calculation.
-    Examples:
-        5.25 -> 5.5 (round up from 0.25)
-        5.75 -> 6.0 (round up from 0.75)
-        6.0 -> 6.0
-        6.3 -> 6.5
     """
     if value == 0:
         return 0.0
@@ -63,7 +58,7 @@ def normalize_to_half_point(value: float) -> float:
 
 
 def is_event_in_window(commence_time_str: str) -> bool:
-    """Check if event start time is within the window (>X min from now, <X hours from now)."""
+    """Check if event start time is within the window."""
     try:
         event_time = datetime.fromisoformat(commence_time_str.replace("Z", "+00:00"))
         now = datetime.now(timezone.utc)
@@ -74,11 +69,11 @@ def is_event_in_window(commence_time_str: str) -> bool:
         
         return min_seconds <= delta.total_seconds() <= max_seconds
     except:
-        return True  # Include if parsing fails
+        return True
 
 
-def fetch_nfl_odds() -> List[Dict]:
-    """Fetch NFL odds from Odds API (base markets + per-event player props)."""
+def fetch_mlb_odds() -> List[Dict]:
+    """Fetch MLB odds from Odds API (base markets + player props)."""
     if not API_KEY:
         print("❌ ODDS_API_KEY not set in .env")
         sys.exit(1)
@@ -95,7 +90,7 @@ def fetch_nfl_odds() -> List[Dict]:
         "oddsFormat": ODDS_FORMAT,
     }
 
-    print(f"[API] Fetching NFL base markets: {', '.join(base_markets)}")
+    print(f"[API] Fetching MLB base markets: {', '.join(base_markets)}")
     try:
         resp = requests.get(url, params=params, timeout=60)
         resp.raise_for_status()
@@ -111,13 +106,24 @@ def fetch_nfl_odds() -> List[Dict]:
 
     # Step 2: Fetch player props per event
     player_props = [
-        "player_pass_yds",
-        "player_rush_yds",
-        "player_reception_yds",
-        "player_anytime_td",
+        "batter_hits",
+        "batter_total_bases",
+        "batter_rbis",
+        "batter_runs_scored",
+        "batter_home_runs",
+        "batter_singles",
+        "batter_doubles",
+        "batter_triples",
+        "batter_walks",
+        "batter_strikeouts",
+        "pitcher_strikeouts",
+        "pitcher_hits_allowed",
+        "pitcher_walks",
+        "pitcher_earned_runs",
+        "pitcher_outs",
     ]
 
-    print(f"[API] Fetching player props for {len(all_events)} events: {', '.join(player_props)}")
+    print(f"[API] Fetching player props for {len(all_events)} events")
     
     props_fetched = 0
     for event_id in all_events.keys():
@@ -134,19 +140,15 @@ def fetch_nfl_odds() -> List[Dict]:
             resp.raise_for_status()
             prop_event = resp.json()
             
-            # Merge prop bookmakers into base event
             base_event = all_events[event_id]
             existing_bms = base_event.get("bookmakers", [])
             
             for prop_bm in prop_event.get("bookmakers", []):
                 bm_key = prop_bm.get("key")
-                # Find existing bookmaker in base event
                 existing_bm = next((b for b in existing_bms if b.get("key") == bm_key), None)
                 if existing_bm:
-                    # Merge markets
                     existing_bm["markets"].extend(prop_bm.get("markets", []))
                 else:
-                    # Add new bookmaker
                     existing_bms.append(prop_bm)
             
             props_fetched += 1
@@ -161,12 +163,11 @@ def fetch_nfl_odds() -> List[Dict]:
 
 
 def extract_rows(events: List[Dict]) -> List[Dict]:
-    """Parse API events into rows (one per market)."""
+    """Parse API events into rows (one per market with normalization)."""
     rows = []
     timestamp = datetime.now(timezone.utc).isoformat()
 
     for event in events:
-        # Filter by time window
         commence_time = event.get("commence_time", "")
         if not is_event_in_window(commence_time):
             continue
@@ -180,12 +181,10 @@ def extract_rows(events: List[Dict]) -> List[Dict]:
         if not bookmakers:
             continue
 
-        # Collect all bookmaker keys
         all_bookie_keys = set()
         for bm in bookmakers:
             all_bookie_keys.add(bm.get("key", ""))
 
-        # Process each market
         for bm in bookmakers:
             bookie_key = bm.get("key", "")
             markets = bm.get("markets", [])
@@ -197,26 +196,22 @@ def extract_rows(events: List[Dict]) -> List[Dict]:
                 for outcome in outcomes:
                     selection = outcome.get("name", "")
                     price = parse_float(outcome.get("price", "0"))
-                    description = outcome.get("description", "")  # Player name is here
+                    description = outcome.get("description", "")
 
                     if price <= 1:
                         continue
 
-                    # Determine line/point for spreads and totals (with normalization)
                     point = ""
                     if "point" in outcome:
                         raw_point = parse_float(outcome.get("point", "0"))
-                        # Normalize spreads and totals to half-point increments
-                        if market_key in ["spreads", "totals"] or market_key.startswith("player_"):
+                        if market_key in ["spreads", "totals"] or market_key.startswith(("batter_", "pitcher_")):
                             normalized_point = normalize_to_half_point(raw_point)
                             point = str(normalized_point)
                         else:
                             point = str(raw_point)
 
-                    # Extract player name for player props
                     player = ""
-                    if market_key.startswith("player_"):
-                        # For player props, player name is in description field (or extract from selection for Over/Under props)
+                    if market_key.startswith(("batter_", "pitcher_")):
                         if description:
                             player = description
                         elif "Over" in selection or "Under" in selection:
@@ -224,13 +219,10 @@ def extract_rows(events: List[Dict]) -> List[Dict]:
 
                     row_key = (event_id, market_key, point, selection, player if player else "")
                     
-                    # Only keep first instance of each market (including player for player props)
                     existing = next((r for r in rows if (r["event_id"], r["market"], r["line"], r["selection"], r.get("player", "")) == row_key), None)
                     if existing:
-                        # Update with new bookmaker odds
                         existing[bookie_key] = f"{price:.2f}"
                     else:
-                        # New row
                         row = {
                             "timestamp": timestamp,
                             "sport": SPORT_KEY,
@@ -242,7 +234,6 @@ def extract_rows(events: List[Dict]) -> List[Dict]:
                             "selection": selection,
                             "player": player,
                         }
-                        # Initialize all bookmakers
                         for bk in all_bookie_keys:
                             row[bk] = ""
                         row[bookie_key] = f"{price:.2f}"
@@ -252,14 +243,14 @@ def extract_rows(events: List[Dict]) -> List[Dict]:
 
 
 def main():
-    print("[RAW NFL] Fetch NFL odds from Odds API")
+    print("[RAW MLB] Fetch MLB odds from Odds API")
     print("=" * 70)
 
-    events = fetch_nfl_odds()
-    print(f"[OK] Fetched {len(events)} NFL events")
+    events = fetch_mlb_odds()
+    print(f"[OK] Fetched {len(events)} MLB events")
 
     if not events:
-        print("⚠️  No NFL events found")
+        print("⚠️  No MLB events found")
         return
 
     rows = extract_rows(events)
@@ -269,7 +260,6 @@ def main():
         print("⚠️  No market data found")
         return
 
-    # Collect all bookmaker columns
     all_bookies = set()
     for row in rows:
         for key in row.keys():
@@ -279,18 +269,16 @@ def main():
     all_bookies = sorted(all_bookies)
     headers = ["timestamp", "sport", "event_id", "commence_time", "teams", "market", "line", "selection", "player"] + all_bookies
 
-    # Write CSV
     with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=headers)
         writer.writeheader()
         for row in rows:
-            # Fill missing bookies with empty string
             for bk in all_bookies:
                 if bk not in row:
                     row[bk] = ""
             writer.writerow(row)
 
-    print(f"✅ Wrote {len(rows)} NFL markets to {OUTPUT_FILE}")
+    print(f"✅ Wrote {len(rows)} MLB markets to {OUTPUT_FILE}")
     print(f"   Bookmakers: {len(all_bookies)}")
     print("[DONE]")
 

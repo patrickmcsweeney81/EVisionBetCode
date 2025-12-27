@@ -1,6 +1,6 @@
 """
-Extract raw NFL market data directly from Odds API (no filtering or calculations)
-Fetches current NFL odds, outputs one row per market.
+Extract raw NBA market data directly from Odds API (no filtering or calculations)
+Fetches current NBA odds, outputs one row per market.
 Includes half-point normalization for spreads and totals.
 """
 
@@ -22,17 +22,17 @@ API_KEY = os.getenv("ODDS_API_KEY", "")
 # Data paths
 DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
-OUTPUT_FILE = DATA_DIR / "raw_NFL.csv"
+OUTPUT_FILE = DATA_DIR / "raw_NBA.csv"
 
 # API Configuration
 ODDS_API_HOST = "https://api.the-odds-api.com"
-SPORT_KEY = "americanfootball_nfl"
+SPORT_KEY = "basketball_nba"
 REGIONS = "au,us,eu"  # Include all regions for best coverage
 ODDS_FORMAT = "decimal"
 
 # Event time filtering
 EVENT_MIN_MINUTES = 5
-EVENT_MAX_HOURS = 24
+EVENT_MAX_HOURS = 48
 
 
 def parse_float(s) -> float:
@@ -77,8 +77,8 @@ def is_event_in_window(commence_time_str: str) -> bool:
         return True  # Include if parsing fails
 
 
-def fetch_nfl_odds() -> List[Dict]:
-    """Fetch NFL odds from Odds API (base markets + per-event player props)."""
+def fetch_nba_odds() -> List[Dict]:
+    """Fetch NBA odds from Odds API (base markets + per-event player props)."""
     if not API_KEY:
         print("❌ ODDS_API_KEY not set in .env")
         sys.exit(1)
@@ -95,7 +95,7 @@ def fetch_nfl_odds() -> List[Dict]:
         "oddsFormat": ODDS_FORMAT,
     }
 
-    print(f"[API] Fetching NFL base markets: {', '.join(base_markets)}")
+    print(f"[API] Fetching NBA base markets: {', '.join(base_markets)}")
     try:
         resp = requests.get(url, params=params, timeout=60)
         resp.raise_for_status()
@@ -111,10 +111,20 @@ def fetch_nfl_odds() -> List[Dict]:
 
     # Step 2: Fetch player props per event
     player_props = [
-        "player_pass_yds",
-        "player_rush_yds",
-        "player_reception_yds",
-        "player_anytime_td",
+        "player_points",
+        "player_rebounds",
+        "player_assists",
+        "player_threes",
+        "player_blocks",
+        "player_steals",
+        "player_turnovers",
+        "player_points_rebounds_assists",
+        "player_points_assists",
+        "player_points_rebounds",
+        "player_rebounds_assists",
+        "player_blocks_steals",
+        "player_double_double",
+        "player_first_basket",
     ]
 
     print(f"[API] Fetching player props for {len(all_events)} events: {', '.join(player_props)}")
@@ -161,7 +171,7 @@ def fetch_nfl_odds() -> List[Dict]:
 
 
 def extract_rows(events: List[Dict]) -> List[Dict]:
-    """Parse API events into rows (one per market)."""
+    """Parse API events into rows (one per market with normalization)."""
     rows = []
     timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -252,14 +262,14 @@ def extract_rows(events: List[Dict]) -> List[Dict]:
 
 
 def main():
-    print("[RAW NFL] Fetch NFL odds from Odds API")
+    print("[RAW NBA] Fetch NBA odds from Odds API")
     print("=" * 70)
 
-    events = fetch_nfl_odds()
-    print(f"[OK] Fetched {len(events)} NFL events")
+    events = fetch_nba_odds()
+    print(f"[OK] Fetched {len(events)} NBA events")
 
     if not events:
-        print("⚠️  No NFL events found")
+        print("⚠️  No NBA events found")
         return
 
     rows = extract_rows(events)
@@ -290,7 +300,7 @@ def main():
                     row[bk] = ""
             writer.writerow(row)
 
-    print(f"✅ Wrote {len(rows)} NFL markets to {OUTPUT_FILE}")
+    print(f"✅ Wrote {len(rows)} NBA markets to {OUTPUT_FILE}")
     print(f"   Bookmakers: {len(all_bookies)}")
     print("[DONE]")
 

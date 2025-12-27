@@ -50,15 +50,16 @@ def normalize_to_half_point(value: float) -> float:
     Normalize spread/total to nearest half-point increment (e.g., 5.5, 6.0, 6.5).
     This ensures alignment across bookmakers for fair odds calculation.
     Examples:
-        5.25 -> 5.5
-        5.75 -> 5.5
+        5.25 -> 5.5 (round up from 0.25)
+        5.75 -> 6.0 (round up from 0.75)
         6.0 -> 6.0
         6.3 -> 6.5
     """
     if value == 0:
         return 0.0
-    # Round to nearest 0.5
-    return round(value * 2) / 2
+    # Round to nearest 0.5, always rounding 0.25 up to 0.5 and 0.75 up to 1.0
+    import math
+    return math.floor(value * 2 + 0.5) / 2
 
 
 def is_event_in_window(commence_time_str: str) -> bool:

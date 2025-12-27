@@ -49,7 +49,9 @@ def normalize_to_half_point(value: float) -> float:
     """Normalize spread/total to nearest half-point increment."""
     if value == 0:
         return 0.0
-    return round(value * 2) / 2
+    # Round to nearest 0.5, always rounding 0.25 up to 0.5 and 0.75 up to 1.0
+    import math
+    return math.floor(value * 2 + 0.5) / 2
 
 
 def is_event_in_window(commence_time_str: str) -> bool:

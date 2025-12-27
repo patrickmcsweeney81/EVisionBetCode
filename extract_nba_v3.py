@@ -215,7 +215,7 @@ class NBAExtractorV3:
         url = f"{API_HOST}/v4/sports/{self.sport}/events"
         params = {
             "apiKey": self.api_key,
-            "regions": "au,us,eu",
+            "regions": "au,us,us2,eu",
         }
         
         try:
@@ -293,7 +293,7 @@ class NBAExtractorV3:
         url = f"{API_HOST}/v4/sports/{self.sport}/events/{event_id}/odds"
         params = {
             "apiKey": self.api_key,
-            "regions": "au,us,eu",
+            "regions": "au,us,us2,eu",
             "markets": "h2h,spreads,totals",
             "oddsFormat": "decimal",
         }

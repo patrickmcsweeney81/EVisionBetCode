@@ -1,0 +1,19 @@
+{
+  "folders": [
+    {
+      "path": "."
+    },
+    {
+      "path": "../EVisionBetSite",
+      "name": "Frontend"
+    }
+  ],
+  "settings": {
+    "memory.maxMemoryMB": 2048,
+    "extensions.autoCheckUpdates": false,
+    "extensions.autoUpdate": false,
+    "update.enableWindowsBackground": false,
+    "telemetry.telemetryLevel": "off",
+    "workbench.enableExperiments": false
+  }
+}

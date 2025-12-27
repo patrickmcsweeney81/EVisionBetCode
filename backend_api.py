@@ -28,6 +28,13 @@ from sqlalchemy import (
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+# Try to load v3 config system (weights, sports config, etc.)
+try:
+    from src.v3.configs import get_sport_config, get_enabled_sports
+    CONFIG_AVAILABLE = True
+except ImportError:
+    CONFIG_AVAILABLE = False
+
 # Load environment variables
 load_dotenv()
 
@@ -1213,6 +1220,71 @@ async def get_database_stats(authorization: Optional[str] = Header(None)):
 # ============================================================================
 
 
+@app.get("/api/config/weights")
+async def get_config_weights():
+    """
+    Get EVisionBet weight configuration for all sports and bookmakers.
+    Frontend uses this to recalculate EV with user-adjusted weights.
+    
+    Returns:
+    {
+        "sports": {
+            "basketball_nba": {
+                "weights": {
+                    "pinnacle": 0.50,
+                    "draftkings": 0.30,
+                    "fanduel": 0.20,
+                    ...
+                }
+            },
+            ...
+        },
+        "timestamp": "2025-12-26T..."
+    }
+    
+    Frontend adjusts weights with sliders (0-4 scale):
+    - user_weight[book] = slider_value (0-4)
+    - normalized_weight[book] = user_weight[book] / sum(all user_weights)
+    - Then recalculates fair_odds using same formula as backend
+    """
+    try:
+        if not CONFIG_AVAILABLE:
+            return {
+                "error": "Config system not available",
+                "sports": {},
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+        
+        # Build weight response for all enabled sports
+        sports_weights = {}
+        enabled_sports = get_enabled_sports()
+        
+        for sport_key in enabled_sports:
+            try:
+                sport_config = get_sport_config(sport_key)
+                if sport_config and "evisionbet_weights" in sport_config:
+                    sports_weights[sport_key] = {
+                        "weights": sport_config["evisionbet_weights"],
+                        "title": sport_config.get("title", sport_key),
+                    }
+            except Exception:
+                # Skip sports with config errors
+                continue
+        
+        return {
+            "sports": sports_weights,
+            "timestamp": datetime.utcnow().isoformat(),
+            "note": "These are EVisionBet's hidden weights. Frontend users start at 0 for all books and adjust via sliders.",
+        }
+    
+    except Exception as e:
+        return {
+            "error": str(e),
+            "sports": {},
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+
 @app.get("/")
 async def root():
     """API root endpoint with documentation links"""
@@ -1225,6 +1297,7 @@ async def root():
             "ev_hits": "/api/ev/hits?limit=50&min_ev=0.01&sport=basketball_nba",
             "ev_summary": "/api/ev/summary",
             "odds_latest": "/api/odds/latest?limit=500&sport=basketball_nba",
+            "config_weights": "/api/config/weights",
             "admin_auth": "/api/admin/auth?password=YOUR_PASSWORD",
             "admin_ev_csv": "/api/admin/ev-opportunities-csv (requires Bearer token)",
             "admin_raw_odds_csv": "/api/admin/raw-odds-csv (requires Bearer token)",

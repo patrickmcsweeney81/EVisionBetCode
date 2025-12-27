@@ -103,13 +103,16 @@ class NFLExtractor(BaseExtractor):
                         # spreads: Handicap +/- (2-way pairs)
                         if len(outcomes) == 2:
                             for outcome in outcomes:
+                                # Normalize point to half-point increments
+                                point_normalized = self._normalize_point(outcome.get("point", ""))
+                                
                                 market_dict = {
                                     "event_id": event_id,
                                     "event_name": event_name,
                                     "commence_time": commence_time,
                                     "league": league,
                                     "market_type": market_key,
-                                    "point": outcome.get("point", ""),
+                                    "point": point_normalized,
                                     "selection": outcome.get("name", ""),
                                     "player_name": "",
                                     "bookmakers": {
@@ -122,13 +125,16 @@ class NFLExtractor(BaseExtractor):
                         # totals: Over/Under (2-way pairs)
                         if len(outcomes) == 2:
                             for outcome in outcomes:
+                                # Normalize point to half-point increments
+                                point_normalized = self._normalize_point(outcome.get("point", ""))
+                                
                                 market_dict = {
                                     "event_id": event_id,
                                     "event_name": event_name,
                                     "commence_time": commence_time,
                                     "league": league,
                                     "market_type": market_key,
-                                    "point": outcome.get("point", ""),
+                                    "point": point_normalized,
                                     "selection": outcome.get("name", ""),
                                     "player_name": "",
                                     "bookmakers": {

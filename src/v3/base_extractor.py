@@ -209,6 +209,43 @@ class BaseExtractor(ABC):
         except (ValueError, AttributeError):
             return 0.0
 
+    def _normalize_point(self, point) -> str:
+        """
+        Normalize point value to half-point increments (0.5).
+        
+        This ensures consistent market grouping regardless of how bookmakers
+        present the lines (e.g., 225.0 vs 225 vs 225.5).
+        
+        Examples:
+            225.0 -> "225.0"
+            225.3 -> "225.5" (rounds to nearest 0.5)
+            225.7 -> "226.0" (rounds to nearest 0.5)
+            226.0 -> "226.0"
+            None -> ""
+            
+        Args:
+            point: The point value (can be float, int, str, or None)
+            
+        Returns:
+            Normalized point as string, or empty string if invalid
+        """
+        if point is None or point == "":
+            return ""
+        
+        try:
+            # Parse to float
+            point_float = self._parse_float(point)
+            
+            # Round to nearest 0.5 using floor + 0.5 method
+            # This avoids banker's rounding issues
+            import math
+            normalized = math.floor(point_float * 2 + 0.5) / 2
+            
+            # Format with one decimal place to show .0 or .5
+            return f"{normalized:.1f}"
+        except (ValueError, TypeError):
+            return ""
+
     def _is_valid_odds(self, odds: float) -> bool:
         """Validate odds (should be between 1.01 and ~1000)"""
         return 1.01 <= odds <= 1000.0

@@ -96,14 +96,17 @@ class NBAExtractor(BaseExtractor):
                             
                         selection = outcome.get("name", "")
                         odds = self._parse_float(outcome.get("price", 0))
-                        point = outcome.get("point")
+                        point_raw = outcome.get("point")
+                        
+                        # Normalize point to half-point increments (0.5)
+                        point = self._normalize_point(point_raw)
 
                         # Skip invalid odds
                         if odds < 1.01:
                             continue
 
-                        # Create market key for grouping
-                        market_key = (event_id, market_type, str(point) if point is not None else "", selection)
+                        # Create market key for grouping (using normalized point)
+                        market_key = (event_id, market_type, point, selection)
 
                         # If not seen before, create entry
                         if market_key not in markets_grouped:
@@ -113,7 +116,7 @@ class NBAExtractor(BaseExtractor):
                                 "commence_time": commence_time,
                                 "league": league,
                                 "market_type": market_type,
-                                "point": str(point) if point is not None else "",
+                                "point": point,
                                 "selection": selection,
                                 "player_name": "",
                                 "bookmakers": {},

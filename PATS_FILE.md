@@ -12,22 +12,27 @@
 - What just happened
 - What's next
 
-### 2. **SETUP GUIDES** (Choose one - 5 min)
+### 2. **NBA DATA QUALITY REVIEW** (🌟 CRITICAL FIRST - 20 min)
+- **Read:** `REVIEW_NBA_DATA.md` ← Start here before any integration
+- **Task:** Review CSV data using provided checklist
+- **Why:** Validate all bookmakers + markets before connecting backend
+
+### 3. **SETUP GUIDES** (Choose one - 5 min)
 - **New to project?** → Read `V3_STANDARDIZED_SETUP.md`
 - **New computer arriving?** → Read `NEW_COMPUTER_SETUP.md`
 - **Need reference?** → Read `archive/README.md`
 
-### 3. **PROJECT STRUCTURE** (5 min)
+### 4. **PROJECT STRUCTURE** (5 min)
 - Read: `README.md` (main project overview)
 - Check: Root folder file list
 - Understand: What files are active vs archived
 
-### 4. **VERIFY SETUP** (2 min)
+### 5. **VERIFY SETUP** (2 min)
 - Check: `.env` exists and has `ODDS_API_KEY`
 - Check: `pyproject.toml` dependencies installed
 - Check: `.vscode/` folder has config
 
-### 5. **CONFIRM EVERYTHING WORKS**
+### 6. **CONFIRM EVERYTHING WORKS**
 ```bash
 # Run this
 python extract_nba_v3.py

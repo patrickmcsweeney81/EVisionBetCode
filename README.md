@@ -1,22 +1,40 @@
-# EVisionBetCode - Smart EV Betting Finder
+# EVisionBet - V3 Standardized Setup
+## Clean, Simple NBA Odds Extraction
 
-**Purpose:** Identify expected value (EV) betting opportunities across 50+ bookmakers using sharp book weighting and intelligent prop isolation.
-
-- **Status:** Production (Pipeline V2 + FastAPI + React Frontend)
-- **Technology Stack:** Python 3.11+, FastAPI, React 19, PostgreSQL, Render
-- **Architecture:** Two-stage pipeline (extract → calculate) with parallel processing
-- **Data:** 7,420+ rows from 12 sports, 50+ bookmakers
-- **Last Updated:** December 14, 2025
+**Status:** ✅ V3 Standardized & Ready  
+**Last Updated:** December 28, 2025  
+**Active Extractor:** `extract_nba_v3.py`
 
 ---
 
-## ⚡ Quick Start (First Time: 10 minutes)
+## 🎯 WHAT THIS DOES
 
-### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- VS Code with Copilot extension
-- `.env` file with `ODDS_API_KEY` from [The Odds API](https://theoddsapi.com/)
+Extracts NBA odds from The Odds API, outputs clean CSV:
+- **196 rows** per run (all markets)
+- **61 columns** (8 metadata + 53 bookmakers)
+- **Timestamp:** `data/v3/extracts/basketball_nba_raw_YYYYMMDD_HHMMSS.csv`
+
+---
+
+## ⚡ QUICK START
+
+```bash
+# 1. Setup (first time only)
+pip install -e ".[dev]"
+echo ODDS_API_KEY=your_key > .env
+
+# 2. Extract
+python extract_nba_v3.py
+
+# 3. Check output
+cat data/v3/extracts/basketball_nba_raw_*.csv
+```
+
+**Result:** Fresh CSV with 53 bookmakers, all markets, ready for backend.
+
+---
+
+## 📖 Full Documentation
 
 ### 1. Initial Setup (One Time)
 ```bash

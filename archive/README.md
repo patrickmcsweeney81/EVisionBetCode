@@ -1,66 +1,131 @@
-# EVisionBetCode Archive
-
-This directory contains historical files that are no longer actively used but preserved for reference.
-
-## 📂 Directory Structure
-
-### database_setup/
-**Purpose:** Initial database setup scripts (one-time use)
-- `setup_database.py` - Initial table creation
-- `run_create_tables.py` - Table creation runner
-- `create_tables.sql` - Raw SQL schema
-- `create_tables_enhanced.sql` - Enhanced schema
-- `verify_database.py` - Initial verification
-
-**Why Archived:** Database tables are now managed via migrations or ORM. These scripts were used for initial Render setup.
-
-### exploration/
-**Purpose:** Market discovery and exploration scripts
-- `discover_markets.py` - Market discovery from Odds API
-
-**Why Archived:** Market discovery completed. Results stored in `data/market_discovery.json`. Script preserved for reference if new sports added.
-
-### old_data/
-**Purpose:** Historical data extractions (deleted, not tracked by git)
-- Old timestamped CSV files removed
-- Only latest `raw_odds_pure.csv` kept in `data/`
-
-**Why Archived:** Old extractions superseded by latest pipeline runs. Data older than 48 hours is stale for betting purposes.
-
-### session_notes/
-**Purpose:** Development session completion notes
-- `CLEANUP_NOTES_DEC13_2025.md`
-- `CODE_REVIEW_FIXES_DEC13.md`
-- `COMPLETION_SUMMARY_DEC13.md`
-- `STATUS_DOCUMENTATION_COMPLETE_DEC13.md`
-- `BACKEND_API_DEPLOYMENT.md`
-
-**Why Archived:** Session-specific completion notes. Superseded by comprehensive documentation suite (VSCODE_SETUP.md, DEVELOPMENT.md, etc.). Preserved for historical context.
-
-### archive/ (pre-existing)
-**Purpose:** Earlier archived documentation
-- Various analysis and setup documents from earlier development phases
-- Maintained as-is for historical reference
+# EVisionBet Archive Index
+## Consolidated Reference Library
+**Created:** December 28, 2025
 
 ---
 
-## 🔍 When to Reference Archive
+## 📋 WHAT'S HERE
 
-- **Database Setup:** If recreating database schema from scratch
-- **Market Discovery:** If adding new sports or markets
-- **Historical Context:** Understanding past decisions and iterations
-- **Recovery:** If old scripts needed for reference
+This archive contains all previous versions, experiments, and documentation from the EVisionBet project development. Everything is organized for easy reference and searching.
 
 ---
 
-## ⚠️ Important Notes
+## 📁 DIRECTORY STRUCTURE
 
-- **Do not modify** archived files - they are historical snapshots
-- **Git history preserved** - All moves done via `git mv`
-- **Reference only** - Use current documentation for active development
-- **Context preserved** - These files explain "why we did this"
+### **1. OLD CODE & PIPELINES**
+
+#### `pipeline_v2/`
+- Original V2 extraction pipeline
+- Uses raw API structure
+- Reference for: fair odds calculation, bookmaker grouping
+
+#### `v3/`
+- Modular V3 architecture attempt
+- Per-sport extractors with base class
+- Reference for: DRY patterns, scalability ideas
+
+#### `*.py` (root level)
+- `pipeline_v3.py` - Orchestrator for V3 (not used)
+- `filter_two_way.py` - Utility to filter 2-way markets
+- `format_csvs.py` - CSV formatting utility
+- `raw_NFL.py` - NFL extraction test
+- `setup_production.py` - Production setup script
+
+### **2. DOCUMENTATION & ANALYSIS**
+
+#### Root Level Docs
+- `PHASE_5_SUMMARY.txt` - Project phase completion notes
+- `ARCHIVE_ANALYSIS.md` - Analysis of what was done
+- `ARCHIVE_COMPLETE.md` - Completion report
+- `DOCUMENTATION_GUIDE.md` - How docs were organized
+- `OPTIMIZATION_GUIDE.md` - Performance/cost optimization ideas
+- `V3_START_HERE.txt` - V3 project startup guide
+
+### **3. OLD PROJECTS & EXPLORATION**
+
+#### `database_setup/`
+- Database initialization scripts
+- Schema definitions
+- Connection setup utilities
+
+#### `exploration/`
+- Ad-hoc testing and research
+- API experiments
+- Market structure exploration
+
+#### `old_data/`
+- Previous CSV extracts
+- Historical odds data
+- Test datasets
+
+#### `session_notes/`
+- Development session logs
+- Problem-solving notes
+- Progress tracking
 
 ---
 
-**Last Updated:** December 14, 2025  
-**Archived By:** Repository cleanup and organization
+## 🔍 HOW TO SEARCH THIS ARCHIVE
+
+### Find Fair Odds Ideas
+→ Look in: `pipeline_v2/` or `OPTIMIZATION_GUIDE.md`
+
+### Find V3 Architecture Patterns
+→ Look in: `v3/base_extractor.py` or `V3_START_HERE.txt`
+
+### Find Previous CSV Formats
+→ Look in: `old_data/` or `PHASE_5_SUMMARY.txt`
+
+### Find Deployment References
+→ Look in: `setup_production.py` or session_notes
+
+### Find Cost/Performance Ideas
+→ Look in: `OPTIMIZATION_GUIDE.md`
+
+---
+
+## 💡 KEY TAKEAWAYS FROM ARCHIVE
+
+**What Worked Well:**
+- Bookmaker rating system (3⭐ sharp vs 1⭐ target)
+- Two-stage pipeline (extract then calculate)
+- CSV-first approach (resilient to DB issues)
+
+**What We Moved Away From:**
+- Modular per-sport extractors (too complex, use simple standardized instead)
+- Orchestrator patterns (single file better for now)
+- Separate fair odds calculation stage (merge into extraction later if needed)
+
+**What's Still Valuable:**
+- Fair odds weight calculations
+- Bookmaker grouping logic
+- Market pairing validation
+
+---
+
+## ✅ CURRENT ACTIVE SETUP
+
+**Not in this archive** (currently in use):
+
+- `extract_nba_v3.py` - Main active extractor
+- `data/v3/extracts/` - Latest CSV outputs
+- `backend_api.py` - FastAPI server
+- `V3_STANDARDIZED_SETUP.md` - Active setup guide
+
+---
+
+## 📝 TO ADD IDEAS FROM ARCHIVE
+
+When referencing something from this archive to implement:
+
+1. Find the file/concept
+2. Copy the relevant code/ideas
+3. Adapt to current standardized format
+4. Test thoroughly
+5. Document in main README
+
+---
+
+**Last Updated:** December 28, 2025
+**Archive Size:** ~17 items organized by type
+**Easy Scanning:** ✅ Organized by function, documented with this index

@@ -277,8 +277,8 @@ class NBAExtractorV3:
                     point = outcome.get("point")
                     price = outcome.get("price")
                     
-                    # Create key for this market/selection combo
-                    key = (market_type, selection, point)
+                    # Create key for this market/selection combo (WITHOUT point - align same markets)
+                    key = (market_type, selection)
                     
                     if key not in markets_data:
                         markets_data[key] = {
@@ -288,9 +288,14 @@ class NBAExtractorV3:
                             "league": "NBA",
                             "event_name": event_name,
                             "market_type": market_type,
-                            "point": point if pd.notna(point) else "",
+                            "point": self._normalize_point(point),  # Normalize to .5
                             "selection": selection,
+                            "_points": [],  # Track all points seen
                         }
+                    
+                    # Track all points for this market
+                    if pd.notna(point):
+                        markets_data[key]["_points"].append(point)
                     
                     # Add bookmaker price
                     if price:
@@ -298,6 +303,8 @@ class NBAExtractorV3:
         
         # Convert to rows
         for market_data in markets_data.values():
+            # Remove internal tracking field
+            market_data.pop("_points", None)
             rows.append(market_data)
         
         return rows
@@ -328,6 +335,32 @@ class NBAExtractorV3:
             return dt.strftime("%I:%M%p %d/%m/%y").lower()
         except:
             return iso_time
+    
+    def _normalize_point(self, point) -> str:
+        """Normalize point to .5 format (no whole numbers)."""
+        if pd.isna(point):
+            return ""
+        
+        # Convert to float
+        p = float(point)
+        
+        # If already ends in .5, keep it
+        if p % 1 == 0.5:
+            return str(p)
+        
+        # If whole number, round to nearest .5
+        # For spreads/totals, this typically means rounding down
+        if p % 1 == 0:
+            # Round down for positive, round up for negative to get to .5
+            if p > 0:
+                normalized = p - 0.5
+            else:
+                normalized = p - 0.5
+            return str(normalized)
+        
+        # Otherwise round to nearest .5
+        rounded = round(p * 2) / 2
+        return str(rounded)
     
     def save(self, df: pd.DataFrame, filename: str = None) -> Path:
         """Save to CSV."""

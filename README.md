@@ -2,11 +2,36 @@
 
 **Purpose:** Identify expected value (EV) betting opportunities across 50+ bookmakers using sharp book weighting and intelligent prop isolation.
 
-- **Status:** Production (Pipeline V2 + FastAPI + React Frontend)
+- **Status:** Production (Pipeline V2 + Sport-Specific Pipeline + FastAPI + React Frontend)
 - **Technology Stack:** Python 3.11+, FastAPI, React 19, PostgreSQL, Render
-- **Architecture:** Two-stage pipeline (extract → calculate) with parallel processing
+- **Architecture:** Two-stage pipeline (extract → calculate) with parallel processing + New sport-specific extractors
 - **Data:** 7,420+ rows from 12 sports, 50+ bookmakers
-- **Last Updated:** December 14, 2025
+- **Last Updated:** December 27, 2025
+
+## 🆕 New Sport-Specific Pipeline
+
+**NEW:** A modular, sport-specific odds extraction system with half-point normalization is now available!
+
+📖 **[Read the Sport-Specific Pipeline Guide →](SPORT_SPECIFIC_PIPELINE.md)**
+
+### Key Features:
+- ✅ One Python file per sport (NFL, NBA, MLB, NHL, NCAAF)
+- ✅ Half-point normalization for spreads and totals
+- ✅ Separate CSVs per sport + merged `all_raw_odds.csv`
+- ✅ EV calculation → `all_ev_hits.csv`
+- ✅ Modular configuration (`config.py`)
+- ✅ Easy to customize and extend
+
+**Quick Start:**
+```bash
+# Extract all sports
+python run_all_sports.py
+
+# Calculate EV opportunities
+python calculate_ev.py
+```
+
+See **[SPORT_SPECIFIC_PIPELINE.md](SPORT_SPECIFIC_PIPELINE.md)** for full documentation.
 
 ---
 

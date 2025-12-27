@@ -257,9 +257,9 @@ class NBAExtractorV3:
             return []
         
         bookmakers = odds_resp.get("bookmakers", [])
-        rows = []
-        markets_data = {}  # Aggregate by market + selection
         
+        # First pass: collect all raw outcomes with their frequencies
+        raw_data = {}  # (market_type, selection) -> {point -> count, prices}
         for bm in bookmakers:
             book_key = bm.get("key")
             if book_key not in BOOKMAKER_MAPPING:
@@ -277,35 +277,48 @@ class NBAExtractorV3:
                     point = outcome.get("point")
                     price = outcome.get("price")
                     
-                    # Create key for this market/selection combo (WITHOUT point - align same markets)
                     key = (market_type, selection)
+                    if key not in raw_data:
+                        raw_data[key] = {"points": {}, "prices": {}}
                     
-                    if key not in markets_data:
-                        markets_data[key] = {
-                            "event_id": event_id,
-                            "extracted_at": self.timestamp,
-                            "commence_time": self._format_time(commence),
-                            "league": "NBA",
-                            "event_name": event_name,
-                            "market_type": market_type,
-                            "point": self._normalize_point(point),  # Normalize to .5
-                            "selection": selection,
-                            "_points": [],  # Track all points seen
-                        }
-                    
-                    # Track all points for this market
+                    # Track point frequency
                     if pd.notna(point):
-                        markets_data[key]["_points"].append(point)
+                        p = float(point)
+                        if p not in raw_data[key]["points"]:
+                            raw_data[key]["points"][p] = 0
+                        raw_data[key]["points"][p] += 1
                     
-                    # Add bookmaker price
+                    # Store prices for each point variant
                     if price:
-                        markets_data[key][book_name] = price
+                        if point not in raw_data[key]["prices"]:
+                            raw_data[key]["prices"][point] = {}
+                        raw_data[key]["prices"][point][book_name] = price
         
-        # Convert to rows
-        for market_data in markets_data.values():
-            # Remove internal tracking field
-            market_data.pop("_points", None)
-            rows.append(market_data)
+        # Second pass: consolidate to most common point per market/selection
+        rows = []
+        for (market_type, selection), data in raw_data.items():
+            # Find most common point
+            canonical_point = None
+            if data["points"]:
+                canonical_point = max(data["points"], key=data["points"].get)
+            
+            row = {
+                "event_id": event_id,
+                "extracted_at": self.timestamp,
+                "commence_time": self._format_time(commence),
+                "league": "NBA",
+                "event_name": event_name,
+                "market_type": market_type,
+                "point": str(canonical_point) if canonical_point else "",
+                "selection": selection,
+            }
+            
+            # Add all bookmaker prices for this canonical point
+            if canonical_point in data["prices"]:
+                for book_name, price in data["prices"][canonical_point].items():
+                    row[book_name] = price
+            
+            rows.append(row)
         
         return rows
     
@@ -335,32 +348,14 @@ class NBAExtractorV3:
             return dt.strftime("%I:%M%p %d/%m/%y").lower()
         except:
             return iso_time
-    
     def _normalize_point(self, point) -> str:
-        """Normalize point to .5 format (no whole numbers)."""
+        """Normalize point to .5 format - keep as-is since API already provides correct format."""
         if pd.isna(point):
             return ""
         
-        # Convert to float
-        p = float(point)
-        
-        # If already ends in .5, keep it
-        if p % 1 == 0.5:
-            return str(p)
-        
-        # If whole number, round to nearest .5
-        # For spreads/totals, this typically means rounding down
-        if p % 1 == 0:
-            # Round down for positive, round up for negative to get to .5
-            if p > 0:
-                normalized = p - 0.5
-            else:
-                normalized = p - 0.5
-            return str(normalized)
-        
-        # Otherwise round to nearest .5
-        rounded = round(p * 2) / 2
-        return str(rounded)
+        # Return point as-is since The Odds API already provides proper .5 format
+        # Don't normalize/round - just use what the API gives
+        return str(float(point))
     
     def save(self, df: pd.DataFrame, filename: str = None) -> Path:
         """Save to CSV."""

@@ -41,6 +41,7 @@ BOOKMAKER_MAPPING = {
     "pinnacle": "pinnacle",
     "betfair_ex_eu": "betfair_ex_eu",
     "betfair_ex_au": "betfair_ex_au",
+    "matchbook": "matchbook",
     
     # US - Mainstream
     "draftkings": "draftkings",
@@ -71,6 +72,7 @@ BOOKMAKER_MAPPING = {
     "dabble_au": "dabble_au",
     "ladbrokes_au": "ladbrokes_au",
     "playup": "playup",
+    "bet365": "bet365",
     
     # EU - Regional
     "unibet": "unibet",
@@ -106,47 +108,59 @@ BOOKMAKER_MAPPING = {
     "sport888": "sport888",
 }
 
-# All 53 bookmakers in order
+# All 54 bookmakers in FINAL LOCKED ORDER (December 28, 2025)
+# Order: 4⭐ Sharps → 0⭐ AU Targets → 3⭐ Sharps → 2⭐ Decent → 1⭐ Soft
+# THIS ORDER IS LOCKED AND WILL NOT CHANGE FOR ANY FUTURE EXTRACTIONS
 ALL_BOOKMAKERS = [
+    # 4⭐ SHARPS - Fair Odds Calculation (6 books)
+    "pinnacle",
     "betfair_ex_eu",
+    "matchbook",
     "draftkings",
     "fanduel",
-    "pinnacle",
-    "betonlineag",
     "lowvig",
+    
+    # 0⭐ AU TARGETS - EV Surface (14 books)
+    "bet365",
     "betfair_ex_au",
-    "betr_au",
-    "betright",
-    "boombet",
-    "dabble_au",
-    "ladbrokes_au",
-    "neds",
-    "playup",
-    "pointsbetau",
     "sportsbet",
+    "dabble_au",
+    "pointsbetau",
+    "neds",
+    "ladbrokes_au",
+    "unibet",
+    "betright",
+    "betr_au",
+    "boombet",
+    "playup",
     "tab",
     "tabtouch",
-    "unibet",
-    "ballybet",
-    "betanysports",
-    "betclic_fr",
+    
+    # 3⭐ SHARPS - Sharp Coverage Depth (4 books)
+    "betonlineag",
     "betmgm",
-    "betparx",
     "betrivers",
+    "fanatics",
+    
+    # 2⭐ DECENT - Secondary Market Depth (6 books)
+    "hardrockbet",
+    "williamhill",
+    "williamhill_us",
+    "bovada",
+    "betanysports",
+    "espnbet",
+    
+    # 1⭐ SOFT - Regional/Soft/Promotional Books (24 books)
+    "betclic_fr",
     "betsson",
     "betus",
-    "bovada",
-    "codere_it",
     "coolbet",
-    "espnbet",
+    "codere_it",
     "everygame",
-    "fanatics",
     "fliff",
     "gtbets",
-    "hardrockbet",
     "leovegas_se",
     "marathonbet",
-    "matchbook",
     "mybookieag",
     "nordicbet",
     "onexbet",
@@ -157,10 +171,10 @@ ALL_BOOKMAKERS = [
     "unibet_fr",
     "unibet_nl",
     "unibet_se",
-    "williamhill",
-    "williamhill_us",
     "winamax_de",
     "winamax_fr",
+    "ballybet",
+    "betparx",
 ]
 
 

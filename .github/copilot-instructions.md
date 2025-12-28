@@ -1,43 +1,149 @@
 ---
-# EVisionBet – AI Agent Guide
+# EVisionBet – AI Agent Quick Reference
 
-**Scope:** Two-repo workspace. Backend and pipeline live in [EVisionBetCode](README.md). React frontend lives in [EVisionBetSite/frontend](../EVisionBetSite/frontend/README.md). Keep both in sync.
+**👉 START HERE:** Read [PATS_FILE.md](../PATS_FILE.md) first. This file is the quick reference.
 
-## Big Picture
-- Flow: The Odds API → [src/pipeline_v2/extract_odds.py](src/pipeline_v2/extract_odds.py) → [data/raw_odds_pure.csv](data/raw_odds_pure.csv) → [src/pipeline_v2/calculate_opportunities.py](src/pipeline_v2/calculate_opportunities.py) → [data/ev_opportunities.csv](data/ev_opportunities.csv) + Postgres → [backend_api.py](backend_api.py) FastAPI → EVisionBetSite React table (2‑minute refresh).
-- Two-stage pipeline is intentional: rerun calculate without spending API credits; supports future multi-source merges.
-- Data paths must come from `get_data_dir()` (Render mounts twice). Never hardcode `/data`.
+**Scope:** Two-repo workspace:
+- Backend + extraction: [EVisionBetCode](../README.md)
+- Frontend: [EVisionBetSite/frontend](../../EVisionBetSite/frontend/README.md)
 
-## Critical Patterns
-- Fair odds (`fair_from_sharps()` in [src/pipeline_v2/calculate_opportunities.py](src/pipeline_v2/calculate_opportunities.py)): only 3⭐/4⭐ books from [src/pipeline_v2/ratings.py](src/pipeline_v2/ratings.py); keep separate weight totals per side (Over vs Under); remove 5% outliers; skip if `sharp_count < 2`.
-- Grouping: Player props keyed by `(sport, event_id, market, point, player_name)` using `_player_key()`; non-player markets keep `player_name` empty.
-- Market guards: skip `EXCLUDE_MARKETS`, require 2-way pairs for totals, and h2h/spreads must have both sides.
-- Target vs sharp: target books (1⭐) surface EV hits; sharp books (3⭐/4⭐) only for fair odds. Do not mix.
-- Outputs: CSV first, DB best-effort. Never let missing DB block CSV writes.
+---
 
-## Developer Workflows
-- Setup: `make dev-install` or `pip install -e .[dev]`; `.env` must define `ODDS_API_KEY` (+ `DATABASE_URL`, `ADMIN_PASSWORD_HASH` as needed).
-- Pipeline: `python src/pipeline_v2/extract_odds.py` then `python src/pipeline_v2/calculate_opportunities.py` (or VS Code task “Pipeline: Run Full (Extract + Calculate)”). Calculation can run without fresh API fetch if CSV exists.
-- Backend: `uvicorn backend_api:app --reload` (http://localhost:8000). Health at `/health`, data at `/api/ev/hits?limit=10`.
-- Frontend: from [EVisionBetSite/frontend](../EVisionBetSite/frontend/README.md) run `npm start`; API URL auto-detects but `.env.local` with `REACT_APP_API_URL=http://localhost:8000` avoids surprises.
-- Quality: `make pre-commit` (black+isort, flake8+pylint, mypy, pytest). Prefer `make test` for quick runs.
+## Current Architecture (V3 - Active)
 
-## Files to Grab First
-- Pipeline logic: [src/pipeline_v2/calculate_opportunities.py](src/pipeline_v2/calculate_opportunities.py), [src/pipeline_v2/extract_odds.py](src/pipeline_v2/extract_odds.py), [src/pipeline_v2/ratings.py](src/pipeline_v2/ratings.py).
-- Backend/API: [backend_api.py](backend_api.py) (CORS, schemas, endpoints) and [render.yaml](render.yaml) (service wiring).
-- Docs: [src/pipeline_v2/README.md](src/pipeline_v2/README.md), [docs/BUGFIX_FAIR_ODDS_DEC10_2025.md](docs/BUGFIX_FAIR_ODDS_DEC10_2025.md), [docs/TWO_STAGE_PIPELINE.md](docs/TWO_STAGE_PIPELINE.md).
-- Frontend reference: [EVisionBetSite/frontend/src/config.js](../EVisionBetSite/frontend/src/config.js) for API detection.
+**Data Flow:**
+```
+The Odds API → extract_nba_v3.py → data/v3/extracts/*.csv → backend_api.py → Frontend React
+```
 
-## Non-Negotiable Pitfalls
-- Do not change grouping keys or weight totals sharing; EV math will break.
-- Never include 1⭐/2⭐ books in fair odds. Only use sharp list for fair prices.
-- Keep CSV writes resilient: missing/invalid odds should be skipped or zeroed, not fatal.
-- Respect time windows and market filters in extraction to avoid API credit blowups.
-- Always route file paths through `get_data_dir()` and avoid absolute `/data` usage.
+**Active Files:**
+- `extract_nba_v3.py` - NBA odds extraction (186 lines)
+- `backend_api.py` - FastAPI server + CSV reader (CORS enabled)
+- `bookmaker_ratings.py` - Bookmaker weight tiers (1⭐ target vs 3⭐/4⭐ sharp)
+- `pyproject.toml` - Dependencies (canonical source)
+- `data/v3/extracts/` - Latest timestamped CSV (286 rows, 53 bookmakers)
 
-## Extension Tips
-- New sports/markets: adjust `SPORTS` env and props lists in [src/pipeline_v2/extract_odds.py](src/pipeline_v2/extract_odds.py).
-- Bookmaker tweaks: edit ratings/weights in [src/pipeline_v2/ratings.py](src/pipeline_v2/ratings.py); update tests ([tests/test_book_weights.py](tests/test_book_weights.py)).
-- Formatting/outputs: use `pretty_float()` helpers; keep EV minimum edge (`EV_MIN_EDGE`) intact unless business directs.
+**Archived (Reference Only):**
+- `archive/` folder contains v1/v2 pipeline code (two-stage calculation, EV math, fair odds logic)
+- Not active but available if patterns needed
 
-Questions or unclear areas? Tell me which section needs more detail and I’ll tighten it up.
+---
+
+## Critical Pattern: Multi-Line Extraction ✅ FIXED (Dec 28)
+
+**Each unique `(market_type, selection, point)` gets its own row.**
+
+❌ **Wrong:** Consolidate all spreads to "most common point" (loses data)
+✅ **Right:** Every spread variation (-6.5, -7.0, -7.5, etc.) is a separate row with all bookmakers' odds
+
+**Example (correct):**
+```
+| market | selection | point | book1_odds | book2_odds | ... |
+| spread | home      | -6.5  | -110       | -108       | ... |
+| spread | home      | -7.0  | -110       | -105       | ... |
+| spread | home      | -7.5  | -112       | -110       | ... |
+```
+
+Result: 12 NBA events → 286 total rows (124 spreads + 162 other markets)
+
+---
+
+## Backend Development
+
+**API Endpoints (backend_api.py):**
+- `/health` - Status check
+- `/api/csv` - Latest CSV data (JSON format)
+- Routes auto-read from latest file in `data/v3/extracts/`
+
+**Key Pattern:**
+```python
+# Read latest CSV
+def get_latest_csv():
+    files = sorted(glob.glob("data/v3/extracts/*.csv"))
+    return files[-1] if files else None
+
+# Serve to frontend
+@app.get("/api/csv")
+async def get_csv_data():
+    df = pd.read_csv(get_latest_csv())
+    return df.to_dict(orient="records")
+```
+
+**Important:** CSV is source of truth. No DB transformation. No calculations.
+
+---
+
+## Frontend Development
+
+**Config (EVisionBetSite/frontend/src/config.js):**
+- Auto-detects backend URL (localhost:8000 or production)
+- React components read from `/api/csv` endpoint
+- Real-time updates (user can refresh or set auto-refresh)
+
+**Key Pattern:**
+- Read config to get API_URL
+- Fetch from `${API_URL}/api/csv`
+- Parse response, display in table
+
+---
+
+## Bookmaker Configuration
+
+**Ratings (bookmaker_ratings.py):**
+```python
+BOOKMAKER_RATINGS = {
+    "DraftKings": 1,      # 1⭐ = Target book (shows opportunities)
+    "FanDuel": 1,         # 1⭐
+    "BetMGM": 3,          # 3⭐ = Sharp book (use for fair odds only)
+    "Pinnacle": 4,        # 4⭐ = Sharpest
+    # ... 49 total books
+}
+```
+
+**Usage Rule:**
+- Extract uses all books (no filtering)
+- EV calculations (when added) will use 3⭐/4⭐ for fair odds, 1⭐ for targets
+
+---
+
+## Developer Commands
+
+```bash
+# Extract NBA data
+python extract_nba_v3.py
+
+# Backend API
+uvicorn backend_api:app --reload --host 127.0.0.1 --port 8000
+
+# Frontend
+cd ../EVisionBetSite/frontend
+npm start
+
+# Git status (should always be clean)
+git status
+```
+
+---
+
+## Non-Negotiable Rules
+
+1. **Multi-line preservation:** Never consolidate spread/total lines by point value
+2. **CSV-first approach:** Always write CSV before DB (CSV is source of truth)
+3. **Extraction complete:** Extract all markets, all bookmakers, no filtering
+4. **Bookmaker mixing:** When doing fair odds: only 3⭐/4⭐. When surfacing opportunities: only 1⭐
+5. **API CORS:** Keep enabled for frontend (unless explicitly changed)
+6. **Git hygiene:** Commit with clear messages, no dangling branches
+
+---
+
+## Reference Files
+
+- **Main README:** [README.md](../README.md)
+- **Frontend README:** [EVisionBetSite/README.md](../../EVisionBetSite/README.md)
+- **Project Start:** [PATS_FILE.md](../PATS_FILE.md)
+- **Archive:** [archive/README.md](../archive/README.md)
+
+---
+
+**Last Updated:** December 28, 2025  
+**Status:** ✅ All active code documented, consolidated to single source of truth

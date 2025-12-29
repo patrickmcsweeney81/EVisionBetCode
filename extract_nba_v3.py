@@ -251,12 +251,37 @@ class NBAExtractorV3:
         # Format event name
         event_name = f"{away} @ {home}"
         
-        # Fetch odds
+        # Fetch main odds (h2h, spreads, totals, alternate markets, player props)
         odds_resp = self._fetch_odds(event_id)
         if not odds_resp:
             return []
         
-        bookmakers = odds_resp.get("bookmakers", [])
+        # Fetch period market odds (h1, h2, q1, q2, q3, q4) as separate call
+        period_resp = self._fetch_period_odds(event_id)
+        
+        # Combine responses
+        all_bookmakers = []
+        if odds_resp.get("bookmakers"):
+            all_bookmakers.extend(odds_resp.get("bookmakers", []))
+        if period_resp.get("bookmakers"):
+            # Merge period bookmakers with main bookmakers
+            period_bms = period_resp.get("bookmakers", [])
+            for pbm in period_bms:
+                # Find matching bookmaker in main response
+                matching_bm = None
+                for abm in all_bookmakers:
+                    if abm.get("key") == pbm.get("key"):
+                        matching_bm = abm
+                        break
+                
+                if matching_bm:
+                    # Add period markets to existing bookmaker
+                    matching_bm.setdefault("markets", []).extend(pbm.get("markets", []))
+                else:
+                    # New bookmaker, add it
+                    all_bookmakers.append(pbm)
+        
+        bookmakers = all_bookmakers
         
         # First pass: collect all raw outcomes with their frequencies
         raw_data = {}  # (market_type, selection) -> {point -> count, prices}
@@ -361,6 +386,25 @@ class NBAExtractorV3:
             return data if isinstance(data, dict) else {}
         except Exception as e:
             print(f"⚠️  Error fetching odds for {event_id}: {e}")
+            return {}
+    
+    def _fetch_period_odds(self, event_id: str) -> Dict:
+        """Fetch period-specific odds (h1, h2, q1, q2, q3, q4) for single event."""
+        url = f"{API_HOST}/v4/sports/{self.sport}/events/{event_id}/odds"
+        params = {
+            "apiKey": self.api_key,
+            "regions": "au,us,us2,eu",
+            "markets": "h1,h2,q1,q2,q3,q4",
+            "oddsFormat": "decimal",
+        }
+        
+        try:
+            resp = requests.get(url, params=params, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            return data if isinstance(data, dict) else {}
+        except Exception as e:
+            # Period markets might not be available, don't print error
             return {}
     
     def _format_time(self, iso_time: str) -> str:

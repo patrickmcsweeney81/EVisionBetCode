@@ -218,7 +218,7 @@ class NBAExtractorV3:
                 df[book] = ""
         
         # Reorder columns: core first, then bookmakers
-        core_cols = ["event_id", "extracted_at", "commence_time", "league", "event_name", "market_type", "point", "selection"]
+        core_cols = ["event_id", "extracted_at", "commence_time", "league", "event_name", "market_type", "point", "selection", "player_name"]
         df = df[core_cols + ALL_BOOKMAKERS]
         
         print(f"✅ Extracted {len(df)} odds rows")
@@ -233,7 +233,7 @@ class NBAExtractorV3:
         }
         
         try:
-            resp = requests.get(url, params=params, timeout=10)
+            resp = requests.get(url, params=params, timeout=20)
             resp.raise_for_status()
             data = resp.json()
             return data if isinstance(data, list) else data.get("data", [])
@@ -269,15 +269,25 @@ class NBAExtractorV3:
             
             for market in bm.get("markets", []):
                 market_type = market.get("key")
-                if market_type not in ["h2h", "spreads", "totals", "h2h_lay"]:
-                    continue
+                # Accept all market types (spreads, totals, player props, period markets, etc.)
                 
                 for outcome in market.get("outcomes", []):
-                    selection = outcome.get("name", "")
+                    selection = outcome.get("name", "")  # Over/Under for regular, player name for props
+                    description = outcome.get("description", "")  # Player name for player props
                     point = outcome.get("point")
                     price = outcome.get("price")
                     
-                    key = (market_type, selection)
+                    # For player props, use description as player identifier
+                    player_name = description if market_type.startswith("player_") else ""
+                    
+                    # Create a unique key based on market type and identifier
+                    if player_name:
+                        # Player props: key includes player name
+                        key = (market_type, player_name, selection)
+                    else:
+                        # Regular markets: key is market type and selection (e.g., "spreads", "Under")
+                        key = (market_type, selection, None)
+                    
                     if key not in raw_data:
                         raw_data[key] = {"points": {}, "prices": {}}
                     
@@ -297,7 +307,21 @@ class NBAExtractorV3:
         # Second pass: PRESERVE ALL POINT VARIATIONS - no consolidation
         # Each unique (market_type, selection, point) = separate row
         rows = []
-        for (market_type, selection), data in raw_data.items():
+        for key, data in raw_data.items():
+            # Unpack key based on whether it's a player prop
+            if len(key) == 3 and key[2] is not None:
+                # Player prop: (market_type, player_name, selection)
+                market_type, identifier, selection = key
+                player_name = identifier
+            elif len(key) == 3 and key[2] is None:
+                # Regular market: (market_type, selection, None)
+                market_type, selection, _ = key
+                player_name = ""
+            else:
+                # Fallback
+                market_type, selection = key[0], key[1]
+                player_name = ""
+            
             # Create a row for EACH unique point value
             for point, books_with_this_point in data["prices"].items():
                 row = {
@@ -309,6 +333,7 @@ class NBAExtractorV3:
                     "market_type": market_type,
                     "point": str(point) if point else "",
                     "selection": selection,
+                    "player_name": player_name,
                 }
                 
                 # Add all bookmaker prices for THIS specific point
@@ -325,12 +350,12 @@ class NBAExtractorV3:
         params = {
             "apiKey": self.api_key,
             "regions": "au,us,us2,eu",
-            "markets": "h2h,spreads,totals",
+            "markets": "h2h,spreads,totals,alternate_spreads,alternate_totals,player_points,player_assists,player_rebounds",
             "oddsFormat": "decimal",
         }
         
         try:
-            resp = requests.get(url, params=params, timeout=10)
+            resp = requests.get(url, params=params, timeout=30)
             resp.raise_for_status()
             data = resp.json()
             return data if isinstance(data, dict) else {}

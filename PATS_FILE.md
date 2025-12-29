@@ -36,22 +36,28 @@
 
 ---
 
-## 📍 CURRENT STATUS (December 28, 2025)
+## 📍 CURRENT STATUS (December 29, 2025)
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **NBA Extraction (V3)** | ✅ Working | `extract_nba_v3.py` → 286 rows, 53 bookmakers |
+| **NBA Extraction (V3)** | ✅ Working | `extract_nba_v3.py` → 88 rows, 62 columns, 11 events |
 | **Backend API** | ✅ Ready | FastAPI on :8000, CORS enabled |
 | **Frontend** | ✅ Ready | React 19 + TypeScript on :3000 |
-| **Git Repos** | ✅ Clean | main branch only, 0 PRs, no dangling branches |
-| **Documentation** | ✅ Consolidated | PATS_FILE, READMEs, copilot-instructions only |
-| **Code Quality** | ✅ Clean | Old docs/tests/configs removed, only active code remains |
+| **Git Repos** | ✅ Clean | main branch only, 3 new commits |
+| **Documentation** | ✅ Consolidated | PATS_FILE, READMEs, copilot-instructions |
+| **Code Quality** | ✅ Clean | Old docs/tests removed, only active code remains |
 
-**Just Completed (Dec 28):**
-- Removed 36 stale files (old docs, analysis scripts, caches, configs)
-- Deleted all old CSV files (kept only latest: `basketball_nba_raw_20251228_110850.csv`)
-- Consolidated documentation to single source of truth
-- Fixed data extraction bug: spreads/totals now preserve all bookmaker line variations
+**Just Completed (Dec 29):**
+- ✅ Created new CSV: `basketball_nba_raw_20251229_163923.csv` (88 rows)
+- ✅ Cloud agent analysis of V2 archive for correct approach
+- ✅ Corrected spreads/totals strategy (each point value = separate market)
+- ✅ 3 new documentation files with validation tests
+
+**Latest CSV:**
+- File: `basketball_nba_raw_20251229_163923.csv`
+- Size: 88 rows × 62 columns
+- Events: 11 NBA games
+- Bookmakers: 53 with pricing across markets
 
 **What's Active:**
 - Extract: `extract_nba_v3.py` (single entry point)
@@ -60,7 +66,7 @@
 - Data: Latest CSV in `data/v3/extracts/`
 
 **On Hold (Intentional):**
-- EV calculation pipeline (secondary feature, not part of current MVP)
+- EV calculation pipeline (roadmap in documentation)
 - Database/Postgres integration (CSV is source of truth for now)
 - Advanced scheduling/automation (manual runs only)
 
@@ -89,6 +95,8 @@ Before you start ANY work:
 | **Backend setup & extraction** | [EVisionBetCode/README.md](README.md) | Starting backend work |
 | **Frontend setup & React** | [EVisionBetSite/README.md](../EVisionBetSite/README.md) | Starting frontend work |
 | **AI Agent guidelines** | [.github/copilot-instructions.md](.github/copilot-instructions.md) | For GitHub Copilot tasks |
+| **Spreads/Totals Correct Structure** | [SPREADS_TOTALS_CORRECT_STRUCTURE.md](SPREADS_TOTALS_CORRECT_STRUCTURE.md) | Building EV calculation code |
+| **Why Different Point Values** | [WHY_DIFFERENT_POINT_VALUES.md](WHY_DIFFERENT_POINT_VALUES.md) | Understanding vigorish/vig |
 | **Legacy code reference** | [archive/README.md](archive/README.md) | Understanding old approaches |
 | **This file** | PATS_FILE.md | Every session start |
 

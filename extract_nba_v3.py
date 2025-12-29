@@ -294,31 +294,28 @@ class NBAExtractorV3:
                             raw_data[key]["prices"][point] = {}
                         raw_data[key]["prices"][point][book_name] = price
         
-        # Second pass: consolidate to most common point per market/selection
+        # Second pass: PRESERVE ALL POINT VARIATIONS - no consolidation
+        # Each unique (market_type, selection, point) = separate row
         rows = []
         for (market_type, selection), data in raw_data.items():
-            # Find most common point
-            canonical_point = None
-            if data["points"]:
-                canonical_point = max(data["points"], key=data["points"].get)
-            
-            row = {
-                "event_id": event_id,
-                "extracted_at": self.timestamp,
-                "commence_time": self._format_time(commence),
-                "league": "NBA",
-                "event_name": event_name,
-                "market_type": market_type,
-                "point": str(canonical_point) if canonical_point else "",
-                "selection": selection,
-            }
-            
-            # Add all bookmaker prices for this canonical point
-            if canonical_point in data["prices"]:
-                for book_name, price in data["prices"][canonical_point].items():
+            # Create a row for EACH unique point value
+            for point, books_with_this_point in data["prices"].items():
+                row = {
+                    "event_id": event_id,
+                    "extracted_at": self.timestamp,
+                    "commence_time": self._format_time(commence),
+                    "league": "NBA",
+                    "event_name": event_name,
+                    "market_type": market_type,
+                    "point": str(point) if point else "",
+                    "selection": selection,
+                }
+                
+                # Add all bookmaker prices for THIS specific point
+                for book_name, price in books_with_this_point.items():
                     row[book_name] = price
-            
-            rows.append(row)
+                
+                rows.append(row)
         
         return rows
     

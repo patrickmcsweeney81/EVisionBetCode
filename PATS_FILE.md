@@ -36,39 +36,43 @@
 
 ---
 
-## 📍 CURRENT STATUS (December 29, 2025)
+## 📍 CURRENT STATUS (December 29, 2025 - UPDATED)
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **NBA Extraction (V3)** | ✅ Working | `extract_nba_v3.py` → 88 rows, 62 columns, 11 events |
+| **NBA Extraction (V3)** | ✅ Enhanced | `extract_nba_v3.py` → **3,999 rows** with player props + alternate markets |
+| **Player Props** | ✅ Active | player_points (452), player_assists (312), player_rebounds (382) |
+| **Alternate Markets** | ✅ Active | alternate_spreads (1,299), alternate_totals (1,332) |
 | **Backend API** | ✅ Ready | FastAPI on :8000, CORS enabled |
 | **Frontend** | ✅ Ready | React 19 + TypeScript on :3000 |
-| **Git Repos** | ✅ Clean | main branch only, 3 new commits |
-| **Documentation** | ✅ Consolidated | PATS_FILE, READMEs, copilot-instructions |
-| **Code Quality** | ✅ Clean | Old docs/tests removed, only active code remains |
+| **Git Repos** | ✅ Clean | main branch only, 7 new commits today |
+| **Documentation** | ✅ Expanded | Added API docs, market guides, extraction summaries |
 
-**Just Completed (Dec 29):**
-- ✅ Created new CSV: `basketball_nba_raw_20251229_163923.csv` (88 rows)
-- ✅ Cloud agent analysis of V2 archive for correct approach
-- ✅ Corrected spreads/totals strategy (each point value = separate market)
-- ✅ 3 new documentation files with validation tests
+**Just Completed (Dec 29, Latest):**
+- ✅ Added player props extraction (player_points, player_assists, player_rebounds)
+- ✅ Added alternate spreads & totals (all point variations)
+- ✅ Increased data from 226 → **3,999 rows** (17x expansion!)
+- ✅ Created EXPANDED_EXTRACTION_SUMMARY.md documentation
+- ✅ Git: 7 commits with API docs + extraction changes
 
 **Latest CSV:**
-- File: `basketball_nba_raw_20251229_163923.csv`
-- Size: 88 rows × 62 columns
+- File: `basketball_nba_raw_20251229_180333.csv`
+- Size: 3,999 rows × 63 columns (17x expansion!)
 - Events: 11 NBA games
-- Bookmakers: 53 with pricing across markets
+- Bookmakers: 54 with full market coverage
+- Markets: h2h (22), spreads (78), totals (100), alternate_spreads (1,299), alternate_totals (1,332), player_points (452), player_assists (312), player_rebounds (382)
 
 **What's Active:**
-- Extract: `extract_nba_v3.py` (single entry point)
+- Extract: `extract_nba_v3.py` (single entry point - now with player props)
 - Backend: `backend_api.py` (FastAPI + CSV reader)
 - Config: `bookmaker_ratings.py` (book weights), `pyproject.toml` (deps)
-- Data: Latest CSV in `data/v3/extracts/`
+- Data: Latest CSV in `data/v3/extracts/` with comprehensive market coverage
 
 **On Hold (Intentional):**
-- EV calculation pipeline (roadmap in documentation)
+- EV calculation pipeline (ready to add when needed)
+- Period-specific markets (q1, h1, q2, etc. - can add if requested)
+- Additional player props (blocks, steals, combos - available on demand)
 - Database/Postgres integration (CSV is source of truth for now)
-- Advanced scheduling/automation (manual runs only)
 
 ---
 

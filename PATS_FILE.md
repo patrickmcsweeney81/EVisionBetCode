@@ -36,42 +36,52 @@
 
 ---
 
-## 📍 CURRENT STATUS (January 6, 2026 - UPDATED)
+## 📍 CURRENT STATUS (January 7, 2026 - CLEANED UP)
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **NBA Extraction (V3)** | ✅ Complete | `extract_nba_v3.py` → **6,554 rows** with player props + alternate markets |
-| **NBA Filtering (V3)** | ✅ New | `filter_nba_v3.py` → **1,844 rows** (sharp + AU book filter, .5 increments, dedupe) |
-| **EV Calculation** | ✅ New | Two versions: clean (9 cols) + full analysis (44 cols, formatted) |
-| **Backend API** | ✅ Ready | FastAPI on :8000, CORS enabled |
+| **NBA Extraction (V3)** | ✅ Production | `extract_nba_v3.py` → **3,496 rows** |
+| **NBA Filtering (V3)** | ✅ Production | `filter_nba_v3.py` → **1,102 rows** (sharp + AU books, dedupe) |
+| **Outlier Detection** | ✅ Production | `outlier_nba_v3.py` → MAD-based filtering |
+| **EV Calculation** | ✅ Production | `calculate_nba_ev_full.py` → 46 columns, MAD-based fair odds |
+| **Pipeline Orchestrator** | ✅ New | `run_nba_pipeline.py` → All 4 stages in one command |
+| **Backend API** | ✅ Ready | FastAPI on :8000, CORS enabled, reads latest CSV |
 | **Frontend** | ✅ Ready | React 19 + TypeScript on :3000 |
-| **Git Repos** | ✅ Clean | main branch, committed EV pipeline scripts |
-| **Documentation** | ✅ Updating | Added EV pipeline flow |
+| **Git Repos** | ✅ Clean | main branch, all debug scripts removed |
+| **Documentation** | ✅ Updated | Consolidated and cleaned up |
 
-**Just Completed (Jan 6, Latest):**
-- ✅ Created filter_nba_v3.py (removes duplicates, whole-number lines, requires sharp+AU books)
-- ✅ Created calculate_nba_ev.py (clean 9-column EV CSV for dashboard)
-- ✅ Created calculate_nba_ev_full.py (44-column analysis EV CSV with formatted values $, %, counts)
-- ✅ Committed and pushed all EV calculation scripts to GitHub
-- ✅ Updated PATS_FILE with new pipeline status
+**Just Completed (Jan 7, Latest):**
+- ✅ Created `run_nba_pipeline.py` (Extract → Filter → Outlier → EV in one command)
+- ✅ Removed 22 debug/test scripts (analyze_*, check_*, compare_*, debug_*, etc.)
+- ✅ Removed old documentation (test reports, analysis, comparisons)
+- ✅ Updated PATS_FILE.md with current status
+- ✅ Updated README.md with orchestrator workflow
 
-**Latest Data Pipeline:**
-- Raw: `basketball_nba_raw_*.csv` (6,554 rows, 30 bookmakers)
-- Filtered: `basketball_nba_filtered_*.csv` (1,844 rows, 30 bookmakers, sharp+AU books only)
-- EV Clean: `basketball_nba_ev_*.csv` (1,844 rows, 9 columns for dashboard)
-- EV Full: `basketball_nba_ev_full_*.csv` (1,844 rows, 44 columns for analysis)
+**Production Data Pipeline:**
+```
+extract_nba_v3.py (3,496 raw rows)
+    ↓ (filter_nba_v3.py)
+basketball_nba_filtered.csv (1,102 rows, sharp+AU books)
+    ↓ (outlier_nba_v3.py)
+Outlier detection applied
+    ↓ (calculate_nba_ev_full.py)
+basketball_nba_ev_full.csv (1,102 rows, 46 columns, MAD-based fair odds)
+    ↓ (backend_api.py)
+FastAPI /api/csv endpoint
+    ↓ (frontend React)
+User sees 29 positive EV opportunities
+```
 
 **What's Active:**
-- Extract: `extract_nba_v3.py` (single entry point - now with player props)
-- Backend: `backend_api.py` (FastAPI + CSV reader)
-- Config: `bookmaker_ratings.py` (book weights), `pyproject.toml` (deps)
-- Data: Latest CSV in `data/v3/extracts/` with comprehensive market coverage
+- **Scripts** (7 total): extract, filter, outlier, calculate, orchestrator, backend, ratings config
+- **Backend**: FastAPI server reads latest CSV from `data/v3/extracts/`
+- **Data**: Latest CSV output with fair odds (MAD-based), EV, and all bookmakers
+- **Orchestration**: `run_nba_pipeline.py` (command: `python run_nba_pipeline.py`)
 
 **On Hold (Intentional):**
-- EV calculation pipeline (ready to add when needed)
 - Period-specific markets (q1, h1, q2, etc. - can add if requested)
 - Additional player props (blocks, steals, combos - available on demand)
-- Database/Postgres integration (CSV is source of truth for now)
+- Database/Postgres integration (CSV is source of truth)
 
 ---
 
@@ -109,30 +119,42 @@ Before you start ANY work:
 
 ## 🚀 COMMON WORKFLOWS
 
-### Extract Fresh NBA Data
+### Extract & Calculate Full Pipeline (One Command)
 ```bash
 cd C:\EVisionBetCode
+python run_nba_pipeline.py
+# OR from VS Code: Ctrl+Shift+B → "🏀 NBA: Full Pipeline"
+```
+Output: Runs Extract → Filter → Outlier Detection → EV Calculation sequentially
+Result: 1,102 lines with 29 positive EV opportunities
+
+### Extract Fresh NBA Data (Raw)
+```bash
 python extract_nba_v3.py
-# Check: data/v3/extracts/basketball_nba_raw_*.csv
+# Output: data/v3/extracts/basketball_nba_raw.csv (3,496 rows)
 ```
 
 ### Filter NBA Data (Remove Low-Value Lines)
 ```bash
 python filter_nba_v3.py
-# Input: Latest basketball_nba_raw_*.csv (6,554 rows)
-# Output: basketball_nba_filtered_*.csv (1,844 rows)
-# Filters: sharp books only, AU books only, .5 increments, dedupe
+# Input: Latest basketball_nba_raw.csv
+# Output: basketball_nba_filtered.csv (1,102 rows)
+# Filters: sharp+AU books only, .5 increments, dedupe
 ```
 
-### Calculate EV (Two Options)
+### Detect Outliers
 ```bash
-# Option 1: Clean CSV for dashboard/frontend (9 columns)
-python calculate_nba_ev.py
-# Output: basketball_nba_ev_*.csv
+python outlier_nba_v3.py
+# Input: Latest basketball_nba_filtered.csv
+# Applies MAD-based outlier detection
+```
 
-# Option 2: Full CSV for analysis (44 columns, formatted values)
+### Calculate EV (Full Analysis - 46 Columns)
+```bash
 python calculate_nba_ev_full.py
-# Output: basketball_nba_ev_full_*.csv ($ signs, % format, book counts)
+# Input: Latest basketball_nba_filtered.csv
+# Output: basketball_nba_ev_full.csv (1,102 rows, 46 columns)
+# Fair odds: MAD-based consensus (rating-specific rules)
 ```
 
 ### Start Backend API (for testing)

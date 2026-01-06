@@ -1,36 +1,39 @@
-# EVisionBet - V3 Standardized Setup
-## Clean, Simple NBA Odds Extraction
+# EVisionBet - V3 Complete Pipeline
+## NBA Odds Extraction & EV Calculation
 
-**Status:** ✅ V3 Standardized & Ready  
-**Last Updated:** December 28, 2025  
-**Active Extractor:** `extract_nba_v3.py`
+**Status:** ✅ Production Ready  
+**Last Updated:** January 7, 2026  
+**Active Pipeline:** `run_nba_pipeline.py` (one-command orchestrator)
 
 ---
 
 ## 🎯 WHAT THIS DOES
 
-Extracts NBA odds from The Odds API, outputs clean CSV:
-- **196 rows** per run (all markets)
-- **61 columns** (8 metadata + 53 bookmakers)
-- **Timestamp:** `data/v3/extracts/basketball_nba_raw_YYYYMMDD_HHMMSS.csv`
+Complete NBA odds pipeline with EV calculation:
+- **Extract:** 3,496 raw odds from The Odds API
+- **Filter:** 1,102 lines (sharp books + Australian bookmakers)
+- **Outlier:** MAD-based statistical filtering
+- **Calculate:** 46-column EV analysis with fair odds
+- **Output:** `basketball_nba_ev_full.csv` with 29 positive EV opportunities
 
 ---
 
-## ⚡ QUICK START
+## ⚡ QUICK START (30 seconds)
 
 ```bash
-# 1. Setup (first time only)
+# 1. One-time setup
 pip install -e ".[dev]"
 echo ODDS_API_KEY=your_key > .env
 
-# 2. Extract
-python extract_nba_v3.py
+# 2. Run entire pipeline (Extract → Filter → Outlier → EV)
+python run_nba_pipeline.py
 
-# 3. Check output
-cat data/v3/extracts/basketball_nba_raw_*.csv
+# 3. Check results
+# Files saved in: data/v3/extracts/basketball_nba_ev_full.csv
+# Results: 1,102 lines, 46 columns, 29 positive EV
 ```
 
-**Result:** Fresh CSV with 53 bookmakers, all markets, ready for backend.
+**Result:** Complete EV-ranked opportunities ready for backend/frontend in ~2 minutes.
 
 ---
 
@@ -56,35 +59,39 @@ code --install-extension GitHub.copilot
 
 ### 2. Daily Development (3 Terminals)
 
-**Terminal 1: Backend**
+**Terminal 1: Data Pipeline**
+```powershell
+cd C:\EVisionBetCode
+.\.venv\Scripts\Activate.ps1
+python run_nba_pipeline.py
+# Runs: Extract → Filter → Outlier → EV (all in sequence)
+# Output: basketball_nba_ev_full.csv (1,102 rows, 46 columns)
+```
+
+**Terminal 2: Backend**
 ```powershell
 cd C:\EVisionBetCode
 .\.venv\Scripts\Activate.ps1
 uvicorn backend_api:app --reload
 # API running on http://localhost:8000
+# Reads latest CSV from data/v3/extracts/
 ```
 
-**Terminal 2: Frontend**
+**Terminal 3: Frontend**
 ```powershell
 cd C:\EVisionBetSite\frontend
 npm start
 # Frontend on http://localhost:3000 (auto hot reload)
-```
-
-**Terminal 3: Data Pipeline** (as needed)
-```powershell
-cd C:\EVisionBetCode
-.\.venv\Scripts\Activate.ps1
-python src/pipeline_v2/extract_odds.py
-python src/pipeline_v2/calculate_opportunities.py
+# Connects to backend API
 ```
 
 ### Access Points
-- **Frontend:** http://localhost:3000 (hot reload - 1 second changes!)
+- **Frontend:** http://localhost:3000 (shows EV opportunities)
 - **API Docs:** http://localhost:8000/docs (Swagger UI)
 - **API Health:** http://localhost:8000/health
+- **API CSV Data:** http://localhost:8000/api/csv
 
-**⏱️ Development Speed:** Edit JS → save → see changes in 1 second (hot reload)
+**⏱️ Development Speed:** Pipeline ~2 min, backend auto-reload, frontend hot reload 1 sec
 
 ---
 
@@ -92,11 +99,18 @@ python src/pipeline_v2/calculate_opportunities.py
 
 ### New to This Project? Start Here:
 
-1. **[VSCODE_SETUP.md](../EVisionBetSite/VSCODE_SETUP.md)** – VS Code Configuration & Initial Setup
-   - Install recommended extensions
-   - Configure Python environment
-   - Set up frontend dependencies
-   - All one-time setup tasks
+1. **[PATS_FILE.md](PATS_FILE.md)** – AI Agent Quick Reference
+   - Current status snapshot
+   - Workflow patterns
+   - Critical design rules
+   - Most important file!
+
+2. **[README.md](README.md)** (this file) – Full Reference
+   - Architecture overview with data flow
+   - Environment variables & configuration
+   - Local development workflow
+   - Pre-commit checks & testing
+   - Common tasks
 
 2. **[DEVELOPMENT.md](../EVisionBetSite/DEVELOPMENT.md)** – Daily Development Workflow
    - How to start all services (3 terminals)

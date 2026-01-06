@@ -346,11 +346,21 @@ class NBAExtractorV3:
             return {}
     
     def _format_time(self, iso_time: str) -> str:
-        """Format ISO time to readable format."""
+        """Format ISO time to readable format (converted to local timezone)."""
         try:
+            # Parse ISO time (UTC from API)
             dt = pd.to_datetime(iso_time)
-            return dt.strftime("%I:%M%p %d/%m/%y").lower()
-        except:
+            
+            # Localize as UTC if not already aware
+            if dt.tz is None:
+                dt = dt.tz_localize('UTC')
+            
+            # Convert to local timezone (Australia/Sydney)
+            dt_local = dt.tz_convert('Australia/Sydney')
+            
+            return dt_local.strftime("%I:%M%p %d/%m/%y").lower()
+        except Exception as e:
+            print(f"Error formatting time '{iso_time}': {e}")
             return iso_time
     def _normalize_point(self, point) -> str:
         """Normalize point to .5 format - keep as-is since API already provides correct format."""

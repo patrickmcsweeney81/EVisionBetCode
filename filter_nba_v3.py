@@ -80,8 +80,7 @@ def filter_nba_data():
     # ============ END FILTERS ============
     
     # Save filtered CSV
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_csv = f"data/v3/extracts/basketball_nba_filtered_{timestamp}.csv"
+    output_csv = "data/v3/extracts/basketball_nba_filtered.csv"
     df.to_csv(output_csv, index=False)
     
     print(f"\n✅ NBA_Filtered CSV saved: {output_csv}")

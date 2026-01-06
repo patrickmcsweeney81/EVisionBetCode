@@ -140,8 +140,7 @@ def fetch_neds_odds():
     
     # Save CSV
     os.makedirs("data", exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_csv = f"data/neds_only_{timestamp}.csv"
+    output_csv = "data/neds_only.csv"
     df.to_csv(output_csv, index=False)
     
     print(f"✅ Saved to: {output_csv}\n")

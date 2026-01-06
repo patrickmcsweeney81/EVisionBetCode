@@ -378,8 +378,7 @@ class NBAExtractorV3:
             return None
         
         if filename is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"basketball_nba_raw_{timestamp}.csv"
+            filename = "basketball_nba_raw.csv"
         
         output_path = DATA_DIR / filename
         df.to_csv(output_path, index=False)

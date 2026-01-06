@@ -73,19 +73,19 @@ def odds_to_implied_prob(decimal_odds):
         return np.nan
     return 1.0 / float(decimal_odds)
 
-def remove_betfair_commission(decimal_odds, commission_rate=0.05):
+def remove_betfair_commission(decimal_odds, commission_rate=0.06):
     """
     Remove Betfair's commission from odds to get true market probability.
     
     Betfair is an exchange - odds already include commission impact.
-    Commission typically 5-6% (default 5%).
+    Commission typically 5-6% (default 6%).
     
     Formula: true_odds = decimal_odds / (1 - commission_rate)
     
     Example:
         Betfair odds: 1.90
-        Commission: 5%
-        True odds: 1.90 / 0.95 = 2.00
+        Commission: 6%
+        True odds: 1.90 / 0.94 = 2.02
     """
     if pd.isna(decimal_odds) or decimal_odds <= 1:
         return decimal_odds
@@ -241,8 +241,8 @@ def calculate_fair_odds(row, df):
                     odds_2 = opposite_row[book]
                     
                     if book == 'betfair_ex_eu':
-                        odds_1 = remove_betfair_commission(odds_1, commission_rate=0.05)
-                        odds_2 = remove_betfair_commission(odds_2, commission_rate=0.05)
+                        odds_1 = remove_betfair_commission(odds_1, commission_rate=0.06)
+                        odds_2 = remove_betfair_commission(odds_2, commission_rate=0.06)
                     
                     p1_raw = odds_to_implied_prob(odds_1)
                     p2_raw = odds_to_implied_prob(odds_2)
@@ -327,7 +327,7 @@ def calculate_fair_odds(row, df):
         odds = row[book]
         # Remove Betfair commission if using Betfair exchange
         if book == 'betfair_ex_eu':
-            odds = remove_betfair_commission(odds, commission_rate=0.05)
+            odds = remove_betfair_commission(odds, commission_rate=0.06)
         prob = odds_to_implied_prob(odds)
         if pd.notna(prob):
             probs_single[book] = prob

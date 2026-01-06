@@ -84,6 +84,31 @@ def devig_2way(p1_raw, p2_raw):
     
     return p1_raw / overround, p2_raw / overround
 
+def is_mad_outlier(value, data_list, threshold=2.5):
+    """
+    Detect if a value is an outlier using Median Absolute Deviation (MAD).
+    
+    MAD = median(|x_i - median(x)|)
+    A value is an outlier if: |value - median| > threshold * MAD
+    
+    threshold=2.5 is equivalent to ~2.5 standard deviations for normal distribution
+    (more lenient than 2.0, less strict than 3.0)
+    """
+    if len(data_list) < 3:
+        return False
+    
+    data_array = np.array(data_list)
+    median = np.median(data_array)
+    mad = np.median(np.abs(data_array - median))
+    
+    # Avoid division by zero
+    if mad == 0:
+        return False
+    
+    # Check if this value is an outlier
+    is_outlier = abs(value - median) > threshold * mad
+    return is_outlier
+
 def get_opposite_selection(market_type, selection, event_id, df):
     """Get opposite selection for 2-way markets."""
     if market_type not in TWO_WAY_MARKETS:
@@ -111,15 +136,28 @@ def is_2way_market(market_type):
 
 def calculate_fair_odds(row, df):
     """
-    Calculate fair odds using weighted average across ALL books:
-    - 4⭐ sharp books: weight 1.5
-    - 3⭐ sharp books: weight 1.0
-    - 2⭐ soft books: weight 0.75 (with 20% trim on soft books)
-    - 1⭐ soft books: weight 0.5 (with 20% trim on soft books)
+    Calculate fair odds using weighted average across ALL books with MAD-based outlier detection:
+    
+    4⭐ sharp books: weight 1.5
+      - Almost never auto-remove (preserves best data)
+      - Only remove if BOTH: MAD outlier AND conflicts with other 4⭐/3⭐ consensus
+    
+    3⭐ sharp books: weight 1.0
+      - Keep unless MAD outlier (statistically extreme)
+    
+    2⭐ soft books: weight 0.75
+      - Keep but downweight; remove if MAD outlier
+    
+    1⭐ soft books: weight 0.5
+      - Keep but downweight; remove if MAD outlier
+    
+    Outlier Detection: Median Absolute Deviation (MAD)
+      - More robust than % trim (doesn't assume linear scaling)
+      - threshold=2.5 equivalent to ~2.5 std devs (lenient on noise)
+      - Adaptive to actual disagreement in data
     
     For 2-way markets: de-vig first, then weighted average.
     For single-outcome markets: simple weighted average of implied probabilities.
-    Special handling for spreads: opposite team has negated point value.
     """
     available_books = [book for book in FAIR_ODDS_BOOKS if pd.notna(row[book])]
     
@@ -188,35 +226,67 @@ def calculate_fair_odds(row, df):
                             devig_probs[book] = p1_devig
             
             if len(devig_probs) >= 1:
-                # Separate sharp and soft books
-                sharp_probs = {book: prob for book, prob in devig_probs.items() 
-                              if book in SHARP_BOOKS_4STAR + SHARP_BOOKS_3STAR}
-                soft_probs = {book: prob for book, prob in devig_probs.items() 
-                             if book in SOFT_BOOKS_2STAR + SOFT_BOOKS_1STAR}
+                # Separate by rating for MAD-based outlier detection
+                probs_4star = {book: prob for book, prob in devig_probs.items() 
+                              if book in SHARP_BOOKS_4STAR}
+                probs_3star = {book: prob for book, prob in devig_probs.items() 
+                              if book in SHARP_BOOKS_3STAR}
+                probs_2star = {book: prob for book, prob in devig_probs.items() 
+                             if book in SOFT_BOOKS_2STAR}
+                probs_1star = {book: prob for book, prob in devig_probs.items() 
+                             if book in SOFT_BOOKS_1STAR}
                 
-                # Trim 20% outliers from soft books only
-                if len(soft_probs) >= 2:
-                    soft_list = list(soft_probs.values())
-                    sorted_soft = sorted(soft_list)
-                    trim_count = max(1, int(len(sorted_soft) * 0.2))
-                    trimmed_soft = sorted_soft[trim_count:-trim_count] if trim_count > 0 else sorted_soft
+                # MAD-based outlier detection with rating-specific logic
+                final_probs = {}
+                
+                # 4⭐: Almost never auto-remove; only if extreme MAD outlier AND conflicts with other 4⭐/3⭐
+                if len(probs_4star) > 0:
+                    consensus_4_3 = np.median(list(probs_4star.values()) + list(probs_3star.values())) if (probs_4star or probs_3star) else None
                     
-                    # Reconstruct soft_probs with only trimmed values
-                    trimmed_books = []
-                    trimmed_values = set(trimmed_soft)
-                    for book, prob in soft_probs.items():
-                        if prob in trimmed_values:
-                            trimmed_books.append(book)
-                            trimmed_values.discard(prob)  # Avoid duplicates
-                    soft_probs = {book: devig_probs[book] for book in trimmed_books}
+                    for book, prob in probs_4star.items():
+                        # Only remove if BOTH: MAD outlier AND conflicts with 4⭐/3⭐ consensus
+                        all_4star_probs = list(probs_4star.values())
+                        is_mad_out = is_mad_outlier(prob, all_4star_probs, threshold=2.5) if len(all_4star_probs) >= 3 else False
+                        
+                        if consensus_4_3 is not None:
+                            conflicts_consensus = abs(prob - consensus_4_3) > 0.03  # 3% disagreement = conflict
+                        else:
+                            conflicts_consensus = False
+                        
+                        # Only remove if BOTH conditions met AND we have backup 4/3 star books
+                        should_remove = is_mad_out and conflicts_consensus and len(probs_4star) > 1
+                        
+                        if not should_remove:
+                            final_probs[book] = prob
                 
-                # Combine all devigged probs (sharp + trimmed soft)
-                all_probs = {**sharp_probs, **soft_probs}
+                # 3⭐: Keep unless MAD outlier
+                if len(probs_3star) > 0:
+                    all_3star_probs = list(probs_3star.values())
+                    for book, prob in probs_3star.items():
+                        is_mad_out = is_mad_outlier(prob, all_3star_probs, threshold=2.5) if len(all_3star_probs) >= 3 else False
+                        if not is_mad_out:
+                            final_probs[book] = prob
                 
-                if len(all_probs) >= 1:
+                # 2⭐: Keep but downweight; remove if MAD outlier
+                if len(probs_2star) > 0:
+                    all_2star_probs = list(probs_2star.values())
+                    for book, prob in probs_2star.items():
+                        is_mad_out = is_mad_outlier(prob, all_2star_probs, threshold=2.5) if len(all_2star_probs) >= 3 else False
+                        if not is_mad_out:
+                            final_probs[book] = prob
+                
+                # 1⭐: Keep but downweight; remove if MAD outlier (rare to have many 1⭐)
+                if len(probs_1star) > 0:
+                    all_1star_probs = list(probs_1star.values())
+                    for book, prob in probs_1star.items():
+                        is_mad_out = is_mad_outlier(prob, all_1star_probs, threshold=2.5) if len(all_1star_probs) >= 2 else False
+                        if not is_mad_out:
+                            final_probs[book] = prob
+                
+                if len(final_probs) >= 1:
                     # Weighted average
-                    prob_list = list(all_probs.values())
-                    weight_list = [BOOK_WEIGHTS[book] for book in all_probs.keys()]
+                    prob_list = list(final_probs.values())
+                    weight_list = [BOOK_WEIGHTS[book] for book in final_probs.keys()]
                     fair_prob = np.average(prob_list, weights=weight_list)
                     
                     # Convert back to decimal odds

@@ -36,31 +36,30 @@
 
 ---
 
-## 📍 CURRENT STATUS (December 29, 2025 - UPDATED)
+## 📍 CURRENT STATUS (January 6, 2026 - UPDATED)
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **NBA Extraction (V3)** | ✅ Enhanced | `extract_nba_v3.py` → **3,999 rows** with player props + alternate markets |
-| **Player Props** | ✅ Active | player_points (452), player_assists (312), player_rebounds (382) |
-| **Alternate Markets** | ✅ Active | alternate_spreads (1,299), alternate_totals (1,332) |
+| **NBA Extraction (V3)** | ✅ Complete | `extract_nba_v3.py` → **6,554 rows** with player props + alternate markets |
+| **NBA Filtering (V3)** | ✅ New | `filter_nba_v3.py` → **1,844 rows** (sharp + AU book filter, .5 increments, dedupe) |
+| **EV Calculation** | ✅ New | Two versions: clean (9 cols) + full analysis (44 cols, formatted) |
 | **Backend API** | ✅ Ready | FastAPI on :8000, CORS enabled |
 | **Frontend** | ✅ Ready | React 19 + TypeScript on :3000 |
-| **Git Repos** | ✅ Clean | main branch only, 7 new commits today |
-| **Documentation** | ✅ Expanded | Added API docs, market guides, extraction summaries |
+| **Git Repos** | ✅ Clean | main branch, committed EV pipeline scripts |
+| **Documentation** | ✅ Updating | Added EV pipeline flow |
 
-**Just Completed (Dec 29, Latest):**
-- ✅ Added player props extraction (player_points, player_assists, player_rebounds)
-- ✅ Added alternate spreads & totals (all point variations)
-- ✅ Increased data from 226 → **3,999 rows** (17x expansion!)
-- ✅ Created EXPANDED_EXTRACTION_SUMMARY.md documentation
-- ✅ Git: 7 commits with API docs + extraction changes
+**Just Completed (Jan 6, Latest):**
+- ✅ Created filter_nba_v3.py (removes duplicates, whole-number lines, requires sharp+AU books)
+- ✅ Created calculate_nba_ev.py (clean 9-column EV CSV for dashboard)
+- ✅ Created calculate_nba_ev_full.py (44-column analysis EV CSV with formatted values $, %, counts)
+- ✅ Committed and pushed all EV calculation scripts to GitHub
+- ✅ Updated PATS_FILE with new pipeline status
 
-**Latest CSV:**
-- File: `basketball_nba_raw_20251229_180333.csv`
-- Size: 3,999 rows × 63 columns (17x expansion!)
-- Events: 11 NBA games
-- Bookmakers: 54 with full market coverage
-- Markets: h2h (22), spreads (78), totals (100), alternate_spreads (1,299), alternate_totals (1,332), player_points (452), player_assists (312), player_rebounds (382)
+**Latest Data Pipeline:**
+- Raw: `basketball_nba_raw_*.csv` (6,554 rows, 30 bookmakers)
+- Filtered: `basketball_nba_filtered_*.csv` (1,844 rows, 30 bookmakers, sharp+AU books only)
+- EV Clean: `basketball_nba_ev_*.csv` (1,844 rows, 9 columns for dashboard)
+- EV Full: `basketball_nba_ev_full_*.csv` (1,844 rows, 44 columns for analysis)
 
 **What's Active:**
 - Extract: `extract_nba_v3.py` (single entry point - now with player props)
@@ -115,6 +114,25 @@ Before you start ANY work:
 cd C:\EVisionBetCode
 python extract_nba_v3.py
 # Check: data/v3/extracts/basketball_nba_raw_*.csv
+```
+
+### Filter NBA Data (Remove Low-Value Lines)
+```bash
+python filter_nba_v3.py
+# Input: Latest basketball_nba_raw_*.csv (6,554 rows)
+# Output: basketball_nba_filtered_*.csv (1,844 rows)
+# Filters: sharp books only, AU books only, .5 increments, dedupe
+```
+
+### Calculate EV (Two Options)
+```bash
+# Option 1: Clean CSV for dashboard/frontend (9 columns)
+python calculate_nba_ev.py
+# Output: basketball_nba_ev_*.csv
+
+# Option 2: Full CSV for analysis (44 columns, formatted values)
+python calculate_nba_ev_full.py
+# Output: basketball_nba_ev_full_*.csv ($ signs, % format, book counts)
 ```
 
 ### Start Backend API (for testing)
@@ -203,9 +221,17 @@ The Odds API
     ↓
 extract_nba_v3.py
     ↓
-data/v3/extracts/basketball_nba_raw_*.csv
+data/v3/extracts/basketball_nba_raw_*.csv (6,554 rows)
     ↓
-backend_api.py (reads latest CSV)
+filter_nba_v3.py (sharp + AU books, .5 increments, dedupe)
+    ↓
+data/v3/extracts/basketball_nba_filtered_*.csv (1,844 rows)
+    ↓
+calculate_nba_ev.py (clean) OR calculate_nba_ev_full.py (analysis)
+    ↓
+basketball_nba_ev_*.csv (9 cols) OR basketball_nba_ev_full_*.csv (44 cols)
+    ↓
+backend_api.py (reads latest EV CSV)
     ↓
 FastAPI endpoints (/health, /api/csv, etc.)
     ↓
@@ -214,7 +240,7 @@ Frontend React app
 User sees EV opportunities
 ```
 
-**No transformations, no DB, no complex logic.** Just extraction → serving.
+**No transformations after EV calculation, no DB, clean pipeline.**
 
 ---
 

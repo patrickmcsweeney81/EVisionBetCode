@@ -346,7 +346,7 @@ class NBAExtractorV3:
             return {}
     
     def _format_time(self, iso_time: str) -> str:
-        """Format ISO time to readable format (converted to local timezone)."""
+        """Format ISO time to readable format (converted to local timezone - Perth)."""
         try:
             # Parse ISO time (UTC from API)
             dt = pd.to_datetime(iso_time)
@@ -355,8 +355,8 @@ class NBAExtractorV3:
             if dt.tz is None:
                 dt = dt.tz_localize('UTC')
             
-            # Convert to local timezone (Australia/Sydney)
-            dt_local = dt.tz_convert('Australia/Sydney')
+            # Convert to local timezone (Perth/Western Australia)
+            dt_local = dt.tz_convert('Australia/Perth')
             
             return dt_local.strftime("%I:%M%p %d/%m/%y").lower()
         except Exception as e:

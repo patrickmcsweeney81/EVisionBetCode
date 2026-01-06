@@ -73,6 +73,25 @@ def odds_to_implied_prob(decimal_odds):
         return np.nan
     return 1.0 / float(decimal_odds)
 
+def remove_betfair_commission(decimal_odds, commission_rate=0.05):
+    """
+    Remove Betfair's commission from odds to get true market probability.
+    
+    Betfair is an exchange - odds already include commission impact.
+    Commission typically 5-6% (default 5%).
+    
+    Formula: true_odds = decimal_odds / (1 - commission_rate)
+    
+    Example:
+        Betfair odds: 1.90
+        Commission: 5%
+        True odds: 1.90 / 0.95 = 2.00
+    """
+    if pd.isna(decimal_odds) or decimal_odds <= 1:
+        return decimal_odds
+    
+    return decimal_odds / (1 - commission_rate)
+
 def devig_2way(p1_raw, p2_raw):
     """De-vig a 2-way market (remove bookmaker margin)."""
     if pd.isna(p1_raw) or pd.isna(p2_raw):
@@ -217,8 +236,16 @@ def calculate_fair_odds(row, df):
             # De-vig all books (4⭐ + 3⭐ + 2⭐ + 1⭐) that have both sides
             for book in FAIR_ODDS_BOOKS:
                 if book in available_books and pd.notna(opposite_row[book]):
-                    p1_raw = odds_to_implied_prob(row[book])
-                    p2_raw = odds_to_implied_prob(opposite_row[book])
+                    # Remove Betfair commission if using Betfair exchange
+                    odds_1 = row[book]
+                    odds_2 = opposite_row[book]
+                    
+                    if book == 'betfair_ex_eu':
+                        odds_1 = remove_betfair_commission(odds_1, commission_rate=0.05)
+                        odds_2 = remove_betfair_commission(odds_2, commission_rate=0.05)
+                    
+                    p1_raw = odds_to_implied_prob(odds_1)
+                    p2_raw = odds_to_implied_prob(odds_2)
                     
                     if pd.notna(p1_raw) and pd.notna(p2_raw):
                         p1_devig, _ = devig_2way(p1_raw, p2_raw)
@@ -295,11 +322,19 @@ def calculate_fair_odds(row, df):
                     return fair_decimal, uses_devig
     
     # Fall back to weighted probability average for single-outcome markets
-    probs = [odds_to_implied_prob(row[book]) for book in available_books]
-    probs = [p for p in probs if pd.notna(p)]
+    probs_single = {}
+    for book in available_books:
+        odds = row[book]
+        # Remove Betfair commission if using Betfair exchange
+        if book == 'betfair_ex_eu':
+            odds = remove_betfair_commission(odds, commission_rate=0.05)
+        prob = odds_to_implied_prob(odds)
+        if pd.notna(prob):
+            probs_single[book] = prob
     
-    if probs:
-        weights = [BOOK_WEIGHTS[book] for book in available_books if pd.notna(odds_to_implied_prob(row[book]))]
+    if probs_single:
+        probs = list(probs_single.values())
+        weights = [BOOK_WEIGHTS[book] for book in probs_single.keys()]
         fair_decimal = 1.0 / np.average(probs, weights=weights)
         return fair_decimal, uses_devig
     
@@ -408,18 +443,20 @@ def calculate_nba_ev_full():
     os.makedirs("data/v3/extracts", exist_ok=True)
     output_csv_full = "data/v3/extracts/basketball_nba_ev_full.csv"
     
-    # Write to temp file first, then move (handles locked files better)
-    import shutil
-    temp_file = output_csv_full + ".tmp"
-    df_output.to_csv(temp_file, index=False)
-    
-    # Move temp file to final location
+    # Direct write (simpler, handles locked files)
     try:
-        if os.path.exists(output_csv_full):
-            os.remove(output_csv_full)
-    except:
-        pass
-    shutil.move(temp_file, output_csv_full)
+        df_output.to_csv(output_csv_full, index=False)
+    except PermissionError:
+        # If file is locked, write to temp and retry
+        temp_file = output_csv_full + ".tmp"
+        df_output.to_csv(temp_file, index=False)
+        import shutil
+        try:
+            if os.path.exists(output_csv_full):
+                os.remove(output_csv_full)
+        except:
+            pass
+        shutil.move(temp_file, output_csv_full)
     
     print(f"✅ Full EV CSV saved: {output_csv_full}")
     print(f"   Columns: {len(df_output.columns)}")

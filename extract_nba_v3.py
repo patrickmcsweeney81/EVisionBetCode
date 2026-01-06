@@ -167,6 +167,9 @@ class NBAExtractorV3:
         self.api_key = API_KEY
         self.sport = "basketball_nba"
         self.timestamp = datetime.now(timezone.utc).isoformat()
+        self.credit_start = None
+        self.credit_end = None
+        self.credit_used = 0
     
     def extract(self) -> pd.DataFrame:
         """Extract NBA odds in standardized V3 format."""
@@ -217,6 +220,14 @@ class NBAExtractorV3:
         try:
             resp = requests.get(url, params=params, timeout=20)
             resp.raise_for_status()
+            
+            # Capture credit info on first request
+            if self.credit_start is None:
+                remaining = resp.headers.get('x-requests-remaining')
+                used = resp.headers.get('x-requests-used')
+                if remaining:
+                    self.credit_start = int(float(remaining))
+            
             data = resp.json()
             return data if isinstance(data, list) else data.get("data", [])
         except Exception as e:
@@ -339,6 +350,13 @@ class NBAExtractorV3:
         try:
             resp = requests.get(url, params=params, timeout=30)
             resp.raise_for_status()
+            
+            # Capture credit info on last request
+            remaining = resp.headers.get('x-requests-remaining')
+            last_cost = resp.headers.get('x-requests-last')
+            if remaining:
+                self.credit_end = int(float(remaining))
+            
             data = resp.json()
             return data if isinstance(data, dict) else {}
         except Exception as e:
@@ -391,6 +409,17 @@ def main():
     df = extractor.extract()
     if not df.empty:
         extractor.save(df)
+        
+        # Show credit usage
+        if extractor.credit_start and extractor.credit_end:
+            credits_used = extractor.credit_start - extractor.credit_end
+            print(f"\n{'='*60}")
+            print(f"💳 API CREDIT USAGE")
+            print(f"{'='*60}")
+            print(f"Credits before extraction: {extractor.credit_start:,}")
+            print(f"Credits after extraction:  {extractor.credit_end:,}")
+            print(f"Credits used this run:     {credits_used:,}")
+            print(f"{'='*60}\n")
     else:
         print("❌ Extraction failed")
     

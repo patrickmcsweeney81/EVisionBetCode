@@ -1,8 +1,9 @@
 """
-V3 NBA EXTRACTOR - Standardized Format
-Outputs CSV matching your preferred structure:
+V3 NBA EXTRACTOR - Optimized Bookmaker Selection
+Outputs CSV with selected 30 bookmakers (cost-optimized):
   - 8 core columns (event, market, selection)
-  - 53 bookmakers (comprehensive)
+  - 30 bookmakers (selected from 54 total for cost savings)
+  - API Cost: 9 credits/event (25% savings vs 4 regions approach)
 """
 
 import csv
@@ -11,6 +12,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
+
+# Fix Windows terminal encoding for emojis
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8')
 
 import pandas as pd
 import requests
@@ -108,11 +113,12 @@ BOOKMAKER_MAPPING = {
     "sport888": "sport888",
 }
 
-# All 54 bookmakers in FINAL LOCKED ORDER (December 28, 2025)
-# Order: 4⭐ Sharps → 0⭐ AU Targets → 3⭐ Sharps → 2⭐ Decent → 1⭐ Soft
-# THIS ORDER IS LOCKED AND WILL NOT CHANGE FOR ANY FUTURE EXTRACTIONS
+# Selected 30 Bookmakers (January 3, 2026)
+# Updated to use bookmakers parameter instead of regions for cost optimization
+# Cost: 30 books = ~3 region equivalents = 9 credits per event (was 12 with 4 regions)
+# Savings: 25% reduction in API credits (~33 credits/run saved)
 ALL_BOOKMAKERS = [
-    # 4⭐ SHARPS - Fair Odds Calculation (6 books)
+    # 4⭐ SHARPS - Fair Odds Calculation
     "pinnacle",
     "betfair_ex_eu",
     "matchbook",
@@ -120,7 +126,7 @@ ALL_BOOKMAKERS = [
     "fanduel",
     "lowvig",
     
-    # 0⭐ AU TARGETS - EV Surface (14 books)
+    # 0⭐ AU TARGETS - EV Surface
     "bet365",
     "betfair_ex_au",
     "sportsbet",
@@ -136,45 +142,21 @@ ALL_BOOKMAKERS = [
     "tab",
     "tabtouch",
     
-    # 3⭐ SHARPS - Sharp Coverage Depth (4 books)
+    # 3⭐ SHARPS - Sharp Coverage Depth
     "betonlineag",
     "betmgm",
     "betrivers",
     "fanatics",
     
-    # 2⭐ DECENT - Secondary Market Depth (6 books)
+    # 2⭐ DECENT - Secondary Market Depth
     "hardrockbet",
-    "williamhill",
     "williamhill_us",
     "bovada",
-    "betanysports",
     "espnbet",
     
-    # 1⭐ SOFT - Regional/Soft/Promotional Books (24 books)
-    "betclic_fr",
-    "betsson",
-    "betus",
+    # 1⭐ SOFT - Specialized Books
     "coolbet",
-    "codere_it",
-    "everygame",
     "fliff",
-    "gtbets",
-    "leovegas_se",
-    "marathonbet",
-    "mybookieag",
-    "nordicbet",
-    "onexbet",
-    "parionssport_fr",
-    "rebet",
-    "sport888",
-    "tipico_de",
-    "unibet_fr",
-    "unibet_nl",
-    "unibet_se",
-    "winamax_de",
-    "winamax_fr",
-    "ballybet",
-    "betparx",
 ]
 
 
@@ -345,11 +327,11 @@ class NBAExtractorV3:
         return rows
     
     def _fetch_odds(self, event_id: str) -> Dict:
-        """Fetch odds for single event."""
+        """Fetch odds for single event using bookmakers parameter for cost optimization."""
         url = f"{API_HOST}/v4/sports/{self.sport}/events/{event_id}/odds"
         params = {
             "apiKey": self.api_key,
-            "regions": "au,us,us2,eu",
+            "bookmakers": ",".join(ALL_BOOKMAKERS),
             "markets": "h2h,spreads,totals,alternate_spreads,alternate_totals,player_points,player_assists,player_rebounds",
             "oddsFormat": "decimal",
         }

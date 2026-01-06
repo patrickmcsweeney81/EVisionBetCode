@@ -379,7 +379,7 @@ def calculate_nba_ev_full():
     print(f"✅ Calculated EV for {valid_evs:,} rows\n")
     
     # Format output columns for readability
-    df['best_au_odds_formatted'] = df['best_au_odds_decimal'].apply(
+    df['Best book odds'] = df['best_au_odds_decimal'].apply(
         lambda x: f"${x:.2f}" if pd.notna(x) else "N/A"
     )
     # Round fair odds to 2 decimals
@@ -398,7 +398,7 @@ def calculate_nba_ev_full():
     
     # Build final column order with formatted display columns + de-vig flag (no numeric ev_percent)
     final_cols = (core_cols + 
-                  ['best_au_bookmaker', 'best_au_odds_formatted', 'best_au_odds_decimal',
+                  ['best_au_bookmaker', 'Best book odds',
                    'EV', 'Fair odds',
                    'total_books', 'uses_devig'] + 
                   bookmaker_cols)
@@ -428,8 +428,10 @@ def calculate_nba_ev_full():
     # Print column summary
     print("📊 Column Breakdown:")
     print(f"   Core metadata: 9")
-    print(f"   Best AU book info: 3 (best_au_bookmaker, best_au_odds_formatted [$], ev_percent_formatted [%])")
-    print(f"   Market info: 2 (total_books, fair_odds_decimal)")
+    print(f"   Best AU book info: 2 (best_au_bookmaker, Best book odds [$])")
+    print(f"   Market info: 2 (total_books, Fair odds)")
+    print(f"   EV: 1 (EV [%])")
+    print(f"   De-vig flag: 1 (uses_devig)")
     print(f"   All Bookmakers: {len(bookmaker_cols)}")
     print(f"   Total columns: {len(df_output.columns)}")
     

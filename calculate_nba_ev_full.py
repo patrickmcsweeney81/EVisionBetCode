@@ -403,8 +403,11 @@ def calculate_nba_ev_full():
     df['ev_percent'] = df.apply(lambda row: calculate_ev(row['fair_odds_decimal'], 
                                                           row['best_au_odds_decimal']), axis=1)
     
-    # Get all bookmaker columns for counting (include soft books for reference)
-    all_books = FAIR_ODDS_BOOKS + AU_BOOKS + SOFT_BOOKS_2STAR + SOFT_BOOKS_1STAR
+    # Get all bookmaker columns for counting
+    # Get the actual 30 bookmakers from the CSV (exclude metadata columns)
+    metadata_cols = ['event_id', 'extracted_at', 'commence_time', 'league', 'event_name',
+                     'market_type', 'point', 'selection', 'player_name']
+    all_books = [col for col in df.columns if col not in metadata_cols]
     
     # Add total_books column
     df['total_books'] = df.apply(lambda row: count_available_books(row, all_books), axis=1)

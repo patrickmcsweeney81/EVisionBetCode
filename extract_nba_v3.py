@@ -340,10 +340,41 @@ class NBAExtractorV3:
     def _fetch_odds(self, event_id: str) -> Dict:
         """Fetch odds for single event using bookmakers parameter for cost optimization."""
         url = f"{API_HOST}/v4/sports/{self.sport}/events/{event_id}/odds"
+        
+        # Core NBA markets (main game only, no period breakdowns)
+        all_markets = (
+            # Main full-game markets (8)
+            "h2h,spreads,totals,alternate_spreads,alternate_totals,"
+            "player_points,player_assists,player_rebounds,"
+            # Player props - main (8)
+            "player_blocks,player_steals,player_threes,player_double_double,"
+            "player_triple_double,player_turnovers,"
+            "player_blocks_alternate,player_steals_alternate,"
+            # Player props - alternate (5)
+            "player_points_alternate,player_assists_alternate,player_rebounds_alternate,"
+            "player_threes_alternate,player_double_double_alternate,"
+            # Player prop combos (8)
+            "player_points_assists,player_points_rebounds,player_rebounds_assists,"
+            "player_points_rebounds_assists,"
+            "player_points_assists_alternate,player_points_rebounds_alternate,"
+            "player_rebounds_assists_alternate,player_points_rebounds_assists_alternate,"
+            # Team props - full game only (2)
+            "team_totals,alternate_team_totals,"
+            # Niche full-game markets (1)
+            "odd_even,"
+            # Other special markets (3)
+            "player_first_basket,player_first_team_basket,player_method_of_first_basket,"
+            "first_team_to_score,last_team_to_score,"
+            # Rare props (5)
+            "player_twos,player_twos_alternate,player_twos_attempts,player_threes_attempts_alternate,"
+            # Draw/Exchange (2)
+            "draw_no_bet_h1,h2h_lay"
+        )
+        
         params = {
             "apiKey": self.api_key,
             "bookmakers": ",".join(ALL_BOOKMAKERS),
-            "markets": "h2h,spreads,totals,alternate_spreads,alternate_totals,player_points,player_assists,player_rebounds",
+            "markets": all_markets,
             "oddsFormat": "decimal",
         }
         
@@ -390,7 +421,7 @@ class NBAExtractorV3:
         return str(float(point))
     
     def save(self, df: pd.DataFrame, filename: str = None) -> Path:
-        """Save to CSV."""
+        """Save to CSV - overwrites previous file."""
         if df.empty:
             print("❌ No data to save")
             return None

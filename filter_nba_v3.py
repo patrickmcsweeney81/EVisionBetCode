@@ -19,7 +19,7 @@ def filter_nba_data():
     """Load latest NBA_Raw CSV and create NBA_Filtered CSV with filters applied."""
     
     # Get latest NBA_Raw CSV
-    csv_files = sorted(glob.glob("data/v3/extracts/basketball_nba_raw_*.csv"))
+    csv_files = sorted(glob.glob("data/v3/extracts/basketball_nba_raw*.csv"))
     if not csv_files:
         print("❌ No NBA_Raw CSV files found in data/v3/extracts/")
         return
@@ -32,23 +32,74 @@ def filter_nba_data():
     
     # ============ APPLY FILTERS HERE ============
     
-    # FILTER 1: Normalize market names (treat alternate_spreads same as spreads, etc.)
-    df['market_type'] = df['market_type'].replace({
+    # FILTER 1: Normalize market names - consolidate alternates by base market type
+    # Map all variations (alternates, periods) to their base market type
+    market_normalization = {
+        # Spreads consolidation
         'alternate_spreads': 'spreads',
-        'alternate_totals': 'totals'
-    })
+        'spreads_q1': 'spreads',
+        'spreads_q2': 'spreads',
+        'spreads_q3': 'spreads',
+        'spreads_q4': 'spreads',
+        'spreads_h1': 'spreads',
+        'spreads_h2': 'spreads',
+        
+        # Totals consolidation
+        'alternate_totals': 'totals',
+        'alternate_totals_q1': 'totals',
+        'alternate_totals_q2': 'totals',
+        'alternate_totals_q3': 'totals',
+        'alternate_totals_q4': 'totals',
+        'alternate_totals_h1': 'totals',
+        'alternate_totals_h2': 'totals',
+        'totals_q1': 'totals',
+        'totals_q2': 'totals',
+        'totals_q3': 'totals',
+        'totals_q4': 'totals',
+        'totals_h1': 'totals',
+        'totals_h2': 'totals',
+        
+        # Team totals consolidation
+        'alternate_team_totals': 'team_totals',
+        'alternate_team_totals_q1': 'team_totals',
+        'alternate_team_totals_q2': 'team_totals',
+        'alternate_team_totals_q3': 'team_totals',
+        'alternate_team_totals_q4': 'team_totals',
+        'alternate_team_totals_h1': 'team_totals',
+        'alternate_team_totals_h2': 'team_totals',
+        
+        # Player props consolidation
+        'player_points_alternate': 'player_points',
+        'player_assists_alternate': 'player_assists',
+        'player_rebounds_alternate': 'player_rebounds',
+        'player_blocks_alternate': 'player_blocks',
+        'player_steals_alternate': 'player_steals',
+        'player_passes_alternate': 'player_passes',
+        'player_tackles_alternate': 'player_tackles',
+        'player_goals_alternate': 'player_goals',
+        'player_shots_on_target_alternate': 'player_shots_on_target',
+        
+        # Player combo props consolidation
+        'player_points_assists_alternate': 'player_points_assists',
+        'player_points_rebounds_alternate': 'player_points_rebounds',
+        'player_points_rebounds_assists_alternate': 'player_points_rebounds_assists',
+        'player_rebounds_assists_alternate': 'player_rebounds_assists',
+    }
+    
+    df['market_type'] = df['market_type'].replace(market_normalization)
     print(f"✅ After normalizing market names: {len(df):,} rows")
     
     # FILTER 2: Remove whole number spreads/totals (only keep .5 increments)
-    # For spreads and totals, keep only lines with .5 values
-    spreads_totals = df[df['market_type'].isin(['spreads', 'totals'])]
-    other_markets = df[~df['market_type'].isin(['spreads', 'totals'])]
+    # For spreads, totals, and team_totals, keep only lines with .5 values
+    spread_total_markets = ['spreads', 'totals', 'team_totals']
+    spread_total_rows = df[df['market_type'].isin(spread_total_markets)]
+    other_markets = df[~df['market_type'].isin(spread_total_markets)]
     
-    # Filter spreads/totals to only .5 increments
-    spreads_totals = spreads_totals[spreads_totals['point'] % 1 == 0.5]
+    # Filter spreads/totals/team_totals to only .5 increments
+    spread_total_rows = spread_total_rows[spread_total_rows['point'] % 1 == 0.5]
     
     # Recombine
-    df = pd.concat([spreads_totals, other_markets], ignore_index=True)
+    df = pd.concat([spread_total_rows, other_markets], ignore_index=True)
     print(f"✅ After removing whole number spreads/totals: {len(df):,} rows")
     
     # FILTER 3: Keep only lines with at least one sharp book
@@ -79,7 +130,7 @@ def filter_nba_data():
     
     # ============ END FILTERS ============
     
-    # Save filtered CSV
+    # Save filtered CSV - overwrites previous file
     output_csv = "data/v3/extracts/basketball_nba_filtered.csv"
     df.to_csv(output_csv, index=False)
     

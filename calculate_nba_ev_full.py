@@ -54,17 +54,74 @@ AU_BOOKS = ['bet365', 'betfair_ex_au', 'sportsbet', 'dabble_au', 'pointsbetau',
 
 # 2-way markets for de-vigging
 TWO_WAY_MARKETS = {
+    # Main markets
     'totals': {'Over': 'Under', 'Under': 'Over'},
     'spreads': 'pair_with_other_team',  # Special: find opposite team in same event
     'h2h': 'pair_with_other_team',  # Special: find opposite team in same event
+    'team_totals': {'Over': 'Under', 'Under': 'Over'},
+    
+    # Alternate spreads/totals
+    'alternate_spreads': 'pair_with_other_team',
+    'alternate_totals': {'Over': 'Under', 'Under': 'Over'},
+    'alternate_team_totals': {'Over': 'Under', 'Under': 'Over'},
+    
+    # Period-specific markets (Q1, Q2, Q3, Q4, H1, H2)
+    'totals_q1': {'Over': 'Under', 'Under': 'Over'},
+    'totals_q2': {'Over': 'Under', 'Under': 'Over'},
+    'totals_q3': {'Over': 'Under', 'Under': 'Over'},
+    'totals_q4': {'Over': 'Under', 'Under': 'Over'},
+    'totals_h1': {'Over': 'Under', 'Under': 'Over'},
+    'totals_h2': {'Over': 'Under', 'Under': 'Over'},
+    'alternate_totals_q1': {'Over': 'Under', 'Under': 'Over'},
+    'alternate_totals_q2': {'Over': 'Under', 'Under': 'Over'},
+    'alternate_totals_q3': {'Over': 'Under', 'Under': 'Over'},
+    'alternate_totals_q4': {'Over': 'Under', 'Under': 'Over'},
+    'alternate_totals_h1': {'Over': 'Under', 'Under': 'Over'},
+    'alternate_totals_h2': {'Over': 'Under', 'Under': 'Over'},
+    'alternate_team_totals_q1': {'Over': 'Under', 'Under': 'Over'},
+    'alternate_team_totals_q2': {'Over': 'Under', 'Under': 'Over'},
+    'alternate_team_totals_q3': {'Over': 'Under', 'Under': 'Over'},
+    'alternate_team_totals_q4': {'Over': 'Under', 'Under': 'Over'},
+    'alternate_team_totals_h1': {'Over': 'Under', 'Under': 'Over'},
+    'alternate_team_totals_h2': {'Over': 'Under', 'Under': 'Over'},
+    'spreads_q1': 'pair_with_other_team',
+    'spreads_q2': 'pair_with_other_team',
+    'spreads_q3': 'pair_with_other_team',
+    'spreads_q4': 'pair_with_other_team',
+    'spreads_h1': 'pair_with_other_team',
+    'spreads_h2': 'pair_with_other_team',
+    
     # Player props - Over/Under are 2-way opposites
     'player_rebounds': {'Over': 'Under', 'Under': 'Over'},
+    'player_rebounds_alternate': {'Over': 'Under', 'Under': 'Over'},
+    'player_rebounds_assists': {'Over': 'Under', 'Under': 'Over'},
+    'player_rebounds_assists_alternate': {'Over': 'Under', 'Under': 'Over'},
     'player_points': {'Over': 'Under', 'Under': 'Over'},
+    'player_points_alternate': {'Over': 'Under', 'Under': 'Over'},
+    'player_points_assists': {'Over': 'Under', 'Under': 'Over'},
+    'player_points_assists_alternate': {'Over': 'Under', 'Under': 'Over'},
+    'player_points_rebounds': {'Over': 'Under', 'Under': 'Over'},
+    'player_points_rebounds_alternate': {'Over': 'Under', 'Under': 'Over'},
+    'player_points_rebounds_assists': {'Over': 'Under', 'Under': 'Over'},
+    'player_points_rebounds_assists_alternate': {'Over': 'Under', 'Under': 'Over'},
     'player_assists': {'Over': 'Under', 'Under': 'Over'},
+    'player_assists_alternate': {'Over': 'Under', 'Under': 'Over'},
+    'player_threes': {'Over': 'Under', 'Under': 'Over'},
+    'player_threes_alternate': {'Over': 'Under', 'Under': 'Over'},
+    'player_blocks': {'Over': 'Under', 'Under': 'Over'},
+    'player_blocks_alternate': {'Over': 'Under', 'Under': 'Over'},
+    'player_steals': {'Over': 'Under', 'Under': 'Over'},
+    'player_steals_alternate': {'Over': 'Under', 'Under': 'Over'},
     'player_passes': {'Over': 'Under', 'Under': 'Over'},
     'player_tackles': {'Over': 'Under', 'Under': 'Over'},
     'player_goals': {'Over': 'Under', 'Under': 'Over'},
     'player_shots_on_target': {'Over': 'Under', 'Under': 'Over'},
+    
+    # Special markets
+    'odd_even': {'Odd': 'Even', 'Even': 'Odd'},
+    'odd_even_h1': {'Odd': 'Even', 'Even': 'Odd'},
+    'odd_even_q1': {'Odd': 'Even', 'Even': 'Odd'},
+    'overtime': {'Yes': 'No', 'No': 'Yes'},
 }
 
 def odds_to_implied_prob(decimal_odds):
@@ -403,14 +460,24 @@ def calculate_nba_ev_full():
     df['ev_percent'] = df.apply(lambda row: calculate_ev(row['fair_odds_decimal'], 
                                                           row['best_au_odds_decimal']), axis=1)
     
-    # Get all bookmaker columns for counting
-    # Get the actual 30 bookmakers from the CSV (exclude metadata columns)
-    metadata_cols = ['event_id', 'extracted_at', 'commence_time', 'league', 'event_name',
-                     'market_type', 'point', 'selection', 'player_name']
-    all_books = [col for col in df.columns if col not in metadata_cols]
+    # Define bookmaker columns BEFORE adding any calculated columns
+    # Same order as extract_nba_v3.py ALL_BOOKMAKERS list
+    BOOKMAKERS_IN_CSV = [
+        # 4⭐ SHARPS
+        "pinnacle", "betfair_ex_eu", "matchbook", "draftkings", "fanduel", "lowvig",
+        # 0⭐ AU TARGETS
+        "bet365", "betfair_ex_au", "sportsbet", "dabble_au", "pointsbetau", "neds", 
+        "ladbrokes_au", "unibet", "betright", "betr_au", "boombet", "playup", "tab", "tabtouch",
+        # 3⭐ SHARPS
+        "betonlineag", "betmgm", "betrivers", "fanatics",
+        # 2⭐ DECENT
+        "hardrockbet", "williamhill_us", "bovada", "espnbet",
+        # 1⭐ SOFT
+        "coolbet", "fliff",
+    ]
     
-    # Add total_books column
-    df['total_books'] = df.apply(lambda row: count_available_books(row, all_books), axis=1)
+    # Add total_books column - count non-NA values for actual bookmakers
+    df['total_books'] = df.apply(lambda row: count_available_books(row, BOOKMAKERS_IN_CSV), axis=1)
     
     # Count valid EVs
     valid_evs = df['ev_percent'].notna().sum()
@@ -432,7 +499,9 @@ def calculate_nba_ev_full():
     # Reorder columns: core → best AU book info → fair odds → all bookmakers
     core_cols = ['event_id', 'extracted_at', 'commence_time', 'league', 'event_name', 
                  'market_type', 'point', 'selection', 'player_name']
-    bookmaker_cols = [col for col in df.columns if col in all_books]
+    
+    # Only include bookmaker columns that actually exist in the input
+    bookmaker_cols = [col for col in BOOKMAKERS_IN_CSV if col in df.columns]
     
     # Build final column order with formatted display columns + de-vig flag (no numeric ev_percent)
     final_cols = (core_cols + 
@@ -442,24 +511,10 @@ def calculate_nba_ev_full():
                   bookmaker_cols)
     df_output = df[final_cols].copy()
     
-    # Save FULL version (all columns, reordered)
+    # Save FULL version (all columns, reordered) - overwrites previous file
     os.makedirs("data/v3/extracts", exist_ok=True)
     output_csv_full = "data/v3/extracts/basketball_nba_ev_full.csv"
-    
-    # Direct write (simpler, handles locked files)
-    try:
-        df_output.to_csv(output_csv_full, index=False)
-    except PermissionError:
-        # If file is locked, write to temp and retry
-        temp_file = output_csv_full + ".tmp"
-        df_output.to_csv(temp_file, index=False)
-        import shutil
-        try:
-            if os.path.exists(output_csv_full):
-                os.remove(output_csv_full)
-        except:
-            pass
-        shutil.move(temp_file, output_csv_full)
+    df_output.to_csv(output_csv_full, index=False)
     
     print(f"✅ Full EV CSV saved: {output_csv_full}")
     print(f"   Columns: {len(df_output.columns)}")
@@ -469,10 +524,10 @@ def calculate_nba_ev_full():
     print("📊 Column Breakdown:")
     print(f"   Core metadata: 9")
     print(f"   Best AU book info: 2 (best_au_bookmaker, Best book odds [$])")
-    print(f"   Market info: 2 (total_books, Fair odds)")
-    print(f"   EV: 1 (EV [%])")
+    print(f"   Market info: 2 (Fair odds, EV [%])")
+    print(f"   Book stats: 1 (total_books)")
     print(f"   De-vig flag: 1 (uses_devig)")
-    print(f"   All Bookmakers: {len(bookmaker_cols)}")
+    print(f"   Bookmakers: {len(bookmaker_cols)}")
     print(f"   Total columns: {len(df_output.columns)}")
     
     print(f"\n📊 EV Statistics:")

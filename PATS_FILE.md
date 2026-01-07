@@ -36,51 +36,68 @@
 
 ---
 
-## 📍 CURRENT STATUS (January 7, 2026 - CLEANED UP)
+## 📍 CURRENT STATUS (January 7, 2026 - OPTIMIZED EXTRACTION)
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **NBA Extraction (V3)** | ✅ Production | `extract_nba_v3.py` → **3,496 rows** |
-| **NBA Filtering (V3)** | ✅ Production | `filter_nba_v3.py` → **1,102 rows** (sharp + AU books, dedupe) |
+| **NBA Extraction (V3)** | ✅ Optimized | `extract_nba_v3.py` → **17,240 rows** (removed period markets) |
+| **NBA Filtering (V3)** | ✅ Optimized | `filter_nba_v3.py` → **1,325 rows** (sharp + AU books, dedupe) |
 | **Outlier Detection** | ✅ Production | `outlier_nba_v3.py` → MAD-based filtering |
-| **EV Calculation** | ✅ Production | `calculate_nba_ev_full.py` → 46 columns, MAD-based fair odds |
-| **Pipeline Orchestrator** | ✅ New | `run_nba_pipeline.py` → All 4 stages in one command |
+| **EV Calculation** | ✅ Production | `calculate_nba_ev_full.py` → 45 columns, all 2-way markets de-vigged |
+| **Pipeline Orchestrator** | ✅ Production | `run_nba_pipeline.py` → All 4 stages in one command |
 | **Backend API** | ✅ Ready | FastAPI on :8000, CORS enabled, reads latest CSV |
 | **Frontend** | ✅ Ready | React 19 + TypeScript on :3000 |
-| **Git Repos** | ✅ Clean | main branch, all debug scripts removed |
-| **Documentation** | ✅ Updated | Consolidated and cleaned up |
+| **Git Repos** | ✅ Clean | main branch, all debug scripts removed, pushed to GitHub |
+| **Documentation** | ✅ Updated | PATS_FILE consolidated, no redundant files |
 
-**Just Completed (Jan 7, Latest):**
-- ✅ Created `run_nba_pipeline.py` (Extract → Filter → Outlier → EV in one command)
-- ✅ Removed 22 debug/test scripts (analyze_*, check_*, compare_*, debug_*, etc.)
-- ✅ Removed old documentation (test reports, analysis, comparisons)
-- ✅ Updated PATS_FILE.md with current status
-- ✅ Updated README.md with orchestrator workflow
+**Just Completed (Jan 7, Latest - Commit 73534fd):**
+- ✅ Removed all period-specific markets (q1-q4, h1-h2) from extraction
+- ✅ Removed h2h_3_way, halftime_fulltime, overtime from extraction (cleaner focus)
+- ✅ Added overtime (Yes/No) to 2-way de-vigging
+- ✅ Added player_threes_alternate to 2-way de-vigging (aligned with player_threes)
+- ✅ Fixed book count bug: now uses actual CSV bookmakers (30) instead of dynamic extraction
+- ✅ Removed duplicate columns at end of CSV output
+- ✅ Changed to static filenames (no timestamping, overwrites each run)
+- ✅ API credit savings: 1,239 → 1,077 credits/run (-13%)
+- ✅ Data efficiency: 23,956 → 17,240 rows (-28%, better signal)
+- ✅ Positive EV improved accuracy: -2.91% → -4.95% mean (better margin removal)
+- ✅ Cleaned up 14 debug/analysis scripts from repo
+- ✅ Pushed to GitHub (commit 73534fd)
 
-**Production Data Pipeline:**
+**Production Data Pipeline (Current):**
 ```
-extract_nba_v3.py (3,496 raw rows)
-    ↓ (filter_nba_v3.py)
-basketball_nba_filtered.csv (1,102 rows, sharp+AU books)
-    ↓ (outlier_nba_v3.py)
-Outlier detection applied
-    ↓ (calculate_nba_ev_full.py)
-basketball_nba_ev_full.csv (1,102 rows, 46 columns, MAD-based fair odds)
-    ↓ (backend_api.py)
-FastAPI /api/csv endpoint
-    ↓ (frontend React)
-User sees 29 positive EV opportunities
+extract_nba_v3.py (30 main markets, no periods)
+    ↓ (17,240 rows)
+filter_nba_v3.py (consolidate alternates, sharp+AU books)
+    ↓ (1,325 rows, 21 market types)
+outlier_nba_v3.py (MAD-based detection)
+    ↓
+calculate_nba_ev_full.py (57 2-way configs, all de-vigged)
+    ↓ (1,325 rows, 45 columns, 239 positive EV)
+backend_api.py (reads latest CSV)
+    ↓
+Frontend React app
 ```
 
-**What's Active:**
-- **Scripts** (7 total): extract, filter, outlier, calculate, orchestrator, backend, ratings config
-- **Backend**: FastAPI server reads latest CSV from `data/v3/extracts/`
-- **Data**: Latest CSV output with fair odds (MAD-based), EV, and all bookmakers
-- **Orchestration**: `run_nba_pipeline.py` (command: `python run_nba_pipeline.py`)
+**What's Active (7 Production Scripts):**
+- extract_nba_v3.py - Fetch odds from API
+- filter_nba_v3.py - Market consolidation + filtering
+- outlier_nba_v3.py - Statistical outlier detection
+- calculate_nba_ev_full.py - Fair odds + EV with de-vigging
+- run_nba_pipeline.py - Orchestrator (Extract → Filter → Outlier → EV)
+- backend_api.py - FastAPI server
+- bookmaker_ratings.py - Bookmaker weight config
+
+**Bookmaker Coverage (30 Total):**
+- 4⭐ Sharp: pinnacle, betfair_ex_eu, matchbook, draftkings, fanduel, lowvig
+- 0⭐ AU Targets: bet365, betfair_ex_au, sportsbet, dabble_au, pointsbetau, neds, ladbrokes_au, unibet, betright, betr_au, boombet, playup, tab, tabtouch
+- 3⭐ Sharp: betonlineag, betmgm, betrivers, fanatics
+- 2⭐ Decent: hardrockbet, williamhill_us, bovada, espnbet
+- 1⭐ Soft: coolbet, fliff
 
 **On Hold (Intentional):**
-- Period-specific markets (q1, h1, q2, etc. - can add if requested)
-- Additional player props (blocks, steals, combos - available on demand)
+- Period-specific markets (q1-q4, h1-h2 removed for efficiency)
+- h2h_3_way, halftime_fulltime, overtime markets (removed, not essential)
 - Database/Postgres integration (CSV is source of truth)
 
 ---

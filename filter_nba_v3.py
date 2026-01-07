@@ -122,11 +122,11 @@ def filter_nba_data():
     df = df.drop('has_au_book', axis=1)
     print(f"✅ After keeping only lines with AU books: {len(df):,} rows")
     
-    # FILTER 5: Remove duplicate bets (same event + selection + point + player_name)
+    # FILTER 5: Remove duplicate bets (same event + selection + point + player_name + team)
     # Now that spreads and alternate_spreads are named the same, 
     # they'll be grouped together and only first occurrence kept
-    # For team_totals and player props, player_name distinguishes different bets
-    df = df.drop_duplicates(subset=['event_name', 'market_type', 'selection', 'point', 'player_name'], keep='first')
+    # For team_totals and player props, player_name/team distinguishes different bets
+    df = df.drop_duplicates(subset=['event_name', 'market_type', 'selection', 'point', 'player_name', 'team'], keep='first')
     print(f"✅ After removing all duplicate bets: {len(df):,} rows")
     
     # ============ END FILTERS ============

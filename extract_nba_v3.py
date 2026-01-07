@@ -231,7 +231,7 @@ class NBAExtractorV3:
                 df[book] = ""
         
         # Reorder columns: core first, then bookmakers
-        core_cols = ["event_id", "extracted_at", "commence_time", "league", "event_name", "market_type", "point", "selection", "player_name"]
+        core_cols = ["event_id", "extracted_at", "commence_time", "league", "event_name", "market_type", "point", "selection", "player_name", "team"]
         df = df[core_cols + ALL_BOOKMAKERS]
         
         print(f"✅ Extracted {len(df)} odds rows")
@@ -298,16 +298,17 @@ class NBAExtractorV3:
                     point = outcome.get("point")
                     price = outcome.get("price")
                     
-                    # Determine player_name based on market type
+                    # Determine player_name and team based on market type
                     # Player props: use description as player identifier
-                    # Team totals: use description as team identifier
+                    # Team props: use description as team identifier
                     # Other markets: empty
+                    player_name = ""
+                    team = ""
+                    
                     if market_type.startswith("player_"):
                         player_name = description  # Player name for player props
                     elif market_type.startswith("team_"):
-                        player_name = description  # Team name for team props (e.g., "Dallas Mavericks")
-                    else:
-                        player_name = ""
+                        team = description  # Team name for team props (e.g., "Dallas Mavericks")
                     
                     # Create a unique key based on market type and identifier
                     if player_name:
@@ -363,6 +364,7 @@ class NBAExtractorV3:
                     "point": str(point) if point else "",
                     "selection": selection,
                     "player_name": player_name,
+                    "team": team,
                 }
                 
                 # Add all bookmaker prices for THIS specific point

@@ -185,6 +185,34 @@ class NBAExtractorV3:
         
         print(f"✅ Found {len(events)} events")
         
+        # Filter events: only process those that haven't started (commence_time > now + 5 min)
+        from datetime import timedelta
+        now = datetime.now(timezone.utc)
+        min_start_time = now + timedelta(minutes=5)
+        
+        filtered_events = []
+        for event in events:
+            try:
+                commence_str = event.get("commence_time", "")
+                if commence_str:
+                    # Parse ISO format: 2026-01-07T09:10:00Z
+                    commence_dt = datetime.fromisoformat(commence_str.replace('Z', '+00:00'))
+                    if commence_dt > min_start_time:
+                        filtered_events.append(event)
+            except Exception as e:
+                # If parsing fails, include event anyway
+                filtered_events.append(event)
+        
+        skipped = len(events) - len(filtered_events)
+        if skipped > 0:
+            print(f"⏭️  Skipped {skipped} event(s) that already started or start in <5 min")
+        
+        events = filtered_events
+        
+        if not events:
+            print("❌ No upcoming events (all started or starting in <5 min)")
+            return pd.DataFrame()
+        
         # Process each event
         rows = []
         for event in events:
@@ -266,16 +294,24 @@ class NBAExtractorV3:
                 
                 for outcome in market.get("outcomes", []):
                     selection = outcome.get("name", "")  # Over/Under for regular, player name for props
-                    description = outcome.get("description", "")  # Player name for player props
+                    description = outcome.get("description", "")  # Player name for player props, team name for team_totals
                     point = outcome.get("point")
                     price = outcome.get("price")
                     
-                    # For player props, use description as player identifier
-                    player_name = description if market_type.startswith("player_") else ""
+                    # Determine player_name based on market type
+                    # Player props: use description as player identifier
+                    # Team totals: use description as team identifier
+                    # Other markets: empty
+                    if market_type.startswith("player_"):
+                        player_name = description  # Player name for player props
+                    elif market_type.startswith("team_"):
+                        player_name = description  # Team name for team props (e.g., "Dallas Mavericks")
+                    else:
+                        player_name = ""
                     
                     # Create a unique key based on market type and identifier
                     if player_name:
-                        # Player props: key includes player name
+                        # Player/Team props: key includes identifier (player or team name)
                         key = (market_type, player_name, selection)
                     else:
                         # Regular markets: key is market type and selection (e.g., "spreads", "Under")

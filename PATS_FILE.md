@@ -36,21 +36,30 @@
 
 ---
 
-## 📍 CURRENT STATUS (January 7, 2026 - OPTIMIZED EXTRACTION)
+## 📍 CURRENT STATUS (January 7, 2026 - TEAM COLUMN ADDED)
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **NBA Extraction (V3)** | ✅ Optimized | `extract_nba_v3.py` → **17,240 rows** (removed period markets) |
-| **NBA Filtering (V3)** | ✅ Optimized | `filter_nba_v3.py` → **1,325 rows** (sharp + AU books, dedupe) |
+| **NBA Extraction (V3)** | ✅ Enhanced | `extract_nba_v3.py` → **Dedicated 'team' column for team_totals** |
+| **NBA Filtering (V3)** | ✅ Enhanced | `filter_nba_v3.py` → **'team' included in dedup logic** |
 | **Outlier Detection** | ✅ Production | `outlier_nba_v3.py` → MAD-based filtering |
-| **EV Calculation** | ✅ Production | `calculate_nba_ev_full.py` → 45 columns, all 2-way markets de-vigged |
+| **EV Calculation** | ✅ Enhanced | `calculate_nba_ev_full.py` → **46 columns, includes 'team'** |
 | **Pipeline Orchestrator** | ✅ Production | `run_nba_pipeline.py` → All 4 stages in one command |
 | **Backend API** | ✅ Ready | FastAPI on :8000, CORS enabled, reads latest CSV |
 | **Frontend** | ✅ Ready | React 19 + TypeScript on :3000 |
-| **Git Repos** | ✅ Clean | main branch, all debug scripts removed, pushed to GitHub |
-| **Documentation** | ✅ Updated | PATS_FILE consolidated, no redundant files |
+| **Git Repos** | ✅ Clean | main branch, all changes pushed to GitHub |
+| **Documentation** | ✅ Updated | TEAM_COLUMN_IMPLEMENTATION.md added |
 
-**Just Completed (Jan 7, Latest - Commit 73534fd):**
+**Just Completed (Jan 7, Latest - Commit 7fcd12e):**
+- ✅ Added dedicated `team` column to extraction for team_totals markets
+- ✅ Separated `team` from `player_name` for clarity (player props vs team props)
+- ✅ Updated filter deduplication to include `team` column
+- ✅ Updated EV output CSV to include `team` column
+- ✅ Team identifiers now extracted from Odds API `description` field
+- ✅ Tested full pipeline with new column structure (22,630 raw rows → 7,547 filtered)
+- ✅ Committed and pushed to GitHub (Commit: 7fcd12e)
+
+**Previous Completion (Jan 7, Earlier - Commit 73534fd):**
 - ✅ Removed all period-specific markets (q1-q4, h1-h2) from extraction
 - ✅ Removed h2h_3_way, halftime_fulltime, overtime from extraction (cleaner focus)
 - ✅ Added overtime (Yes/No) to 2-way de-vigging

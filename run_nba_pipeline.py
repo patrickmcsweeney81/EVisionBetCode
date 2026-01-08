@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 """
 NBA Pipeline Orchestrator - Runs all scripts sequentially
-Usage: python run_nba_pipeline.py
+Usage: 
+    python run_nba_pipeline.py              # Skips extraction, uses existing raw data
+    python run_nba_pipeline.py --extract    # Includes extraction (uses API credits)
 """
 
 import subprocess
@@ -9,15 +11,22 @@ import sys
 from datetime import datetime
 
 
-def run_pipeline():
+def run_pipeline(extract_enabled=False):
     """Run NBA extraction pipeline in sequence"""
     
-    scripts = [
-        ("Extract RAW", "extract_nba_v3.py"),
+    # Determine which scripts to run
+    scripts = []
+    
+    if extract_enabled:
+        scripts.append(("Extract RAW", "extract_nba_v3.py"))
+    else:
+        print("⏭️  Extraction SKIPPED (use --extract flag to enable API calls)")
+    
+    scripts.extend([
         ("Filter", "filter_nba_v3.py"),
         ("Detect Outliers", "outlier_nba_v3.py"),
         ("Calculate EV", "calculate_nba_ev_full.py"),
-    ]
+    ])
     
     print("=" * 80)
     print(f"🏀 NBA PIPELINE ORCHESTRATOR - Started {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -69,4 +78,6 @@ def run_pipeline():
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    # Check for --extract flag to enable API calls
+    extract_enabled = "--extract" in sys.argv
+    run_pipeline(extract_enabled=extract_enabled)

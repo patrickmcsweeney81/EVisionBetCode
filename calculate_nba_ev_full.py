@@ -500,8 +500,11 @@ def calculate_nba_ev_full():
         lambda x: f"{x:.2f}%" if pd.notna(x) else "N/A"
     )
     
-    # Reorder columns: core → best AU book info → fair odds → all bookmakers
-    core_cols = ['event_id', 'extracted_at', 'commence_time', 'league', 'event_name', 
+    # Reorder columns: id → core → best AU book info → fair odds → all bookmakers
+    # Add auto-incrementing id as first column
+    df['id'] = range(1, len(df) + 1)
+    
+    core_cols = ['id', 'event_id', 'extracted_at', 'commence_time', 'league', 'event_name', 
                  'market_type', 'point', 'selection', 'player_name', 'pair_id']
     
     # Only include bookmaker columns that actually exist in the input

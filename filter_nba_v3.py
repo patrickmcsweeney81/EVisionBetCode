@@ -18,13 +18,15 @@ from datetime import datetime
 def filter_nba_data():
     """Load latest NBA_Raw CSV and create NBA_Filtered CSV with filters applied."""
     
-    # Get latest NBA_Raw CSV
+    # Get latest NBA_Raw CSV (prefer _new.csv if it exists for fresh extraction)
     csv_files = sorted(glob.glob("data/v3/extracts/basketball_nba_raw*.csv"))
     if not csv_files:
         print("❌ No NBA_Raw CSV files found in data/v3/extracts/")
         return
     
-    latest_raw_csv = csv_files[-1]
+    # Prioritize _new.csv (fresh extraction, main file might be locked by backend)
+    csv_new = [f for f in csv_files if f.endswith("_new.csv")]
+    latest_raw_csv = csv_new[-1] if csv_new else csv_files[-1]
     print(f"📂 Loading NBA_Raw: {latest_raw_csv}")
     
     df = pd.read_csv(latest_raw_csv)
@@ -131,9 +133,16 @@ def filter_nba_data():
     
     # ============ END FILTERS ============
     
-    # Save filtered CSV - overwrites previous file
+    # Save filtered CSV - overwrites previous file (fallback if locked)
     output_csv = "data/v3/extracts/basketball_nba_filtered.csv"
-    df.to_csv(output_csv, index=False)
+    try:
+        df.to_csv(output_csv, index=False)
+    except PermissionError:
+        # File locked by backend API, save to alternate
+        alt_csv = "data/v3/extracts/basketball_nba_filtered_new.csv"
+        df.to_csv(alt_csv, index=False)
+        print(f"⚠️  Main file locked by backend, saved to: {alt_csv}")
+        output_csv = alt_csv
     
     print(f"\n✅ NBA_Filtered CSV saved: {output_csv}")
     print(f"   Final rows: {len(df):,}")

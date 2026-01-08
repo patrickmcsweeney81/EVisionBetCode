@@ -9,6 +9,7 @@ Outputs CSV with selected 30 bookmakers (cost-optimized):
 import csv
 import os
 import sys
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
@@ -396,8 +397,6 @@ class NBAExtractorV3:
             "player_points_rebounds_assists,"
             "player_points_assists_alternate,player_points_rebounds_alternate,"
             "player_rebounds_assists_alternate,player_points_rebounds_assists_alternate,"
-            # Team props - full game only (2)
-            "team_totals,alternate_team_totals,"
             # Niche full-game markets (1)
             "odd_even,"
             # Other special markets (3)
@@ -468,7 +467,18 @@ class NBAExtractorV3:
             filename = "basketball_nba_raw.csv"
         
         output_path = DATA_DIR / filename
-        df.to_csv(output_path, index=False)
+        
+        # Try direct write with pandas, ignore if file is locked
+        try:
+            df.to_csv(output_path, index=False)
+        except PermissionError:
+            # File is locked (backend API reading it), save to alternate name
+            # This is okay - backend will use the latest available file
+            alt_path = DATA_DIR / f"{filename[:-4]}_new.csv"
+            df.to_csv(alt_path, index=False)
+            print(f"⚠️  Main file locked by backend, saved to: {alt_path}")
+            return alt_path
+        
         print(f"✅ Saved: {output_path}")
         return output_path
 

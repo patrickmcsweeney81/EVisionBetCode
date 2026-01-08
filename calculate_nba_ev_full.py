@@ -437,11 +437,15 @@ def calculate_ev(fair_decimal, au_decimal):
 def calculate_nba_ev_full():
     """Calculate EV for filtered NBA data with de-vigging, keep all columns."""
     
-    # Load filtered CSV
-    filtered_csv = "data/v3/extracts/basketball_nba_filtered.csv"
-    if not os.path.exists(filtered_csv):
+    # Load filtered CSV (prefer _new.csv if it exists for fresh extraction)
+    csv_files = sorted(glob.glob("data/v3/extracts/basketball_nba_filtered*.csv"))
+    if not csv_files:
         print("❌ No filtered NBA CSV found. Run filter_nba_v3.py first.")
         return
+    
+    # Prioritize _new.csv (fresh filter, main file might be locked by backend)
+    csv_new = [f for f in csv_files if f.endswith("_new.csv")]
+    filtered_csv = csv_new[-1] if csv_new else csv_files[-1]
     
     print(f"📂 Loading filtered CSV: {filtered_csv}")
     
@@ -511,10 +515,17 @@ def calculate_nba_ev_full():
                   bookmaker_cols)
     df_output = df[final_cols].copy()
     
-    # Save FULL version (all columns, reordered) - overwrites previous file
+    # Save FULL version (all columns, reordered) - overwrites previous file (fallback if locked)
     os.makedirs("data/v3/extracts", exist_ok=True)
     output_csv_full = "data/v3/extracts/basketball_nba_ev_full.csv"
-    df_output.to_csv(output_csv_full, index=False)
+    try:
+        df_output.to_csv(output_csv_full, index=False)
+    except PermissionError:
+        # File locked by backend API, save to alternate
+        alt_csv_full = "data/v3/extracts/basketball_nba_ev_full_new.csv"
+        df_output.to_csv(alt_csv_full, index=False)
+        print(f"⚠️  Main file locked by backend, saved to: {alt_csv_full}")
+        output_csv_full = alt_csv_full
     
     print(f"✅ Full EV CSV saved: {output_csv_full}")
     print(f"   Columns: {len(df_output.columns)}")

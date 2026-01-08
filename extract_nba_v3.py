@@ -231,8 +231,71 @@ class NBAExtractorV3:
             if book not in df.columns:
                 df[book] = ""
         
-        # Reorder columns: core first, then bookmakers
-        core_cols = ["event_id", "extracted_at", "commence_time", "league", "event_name", "market_type", "point", "selection", "player_name"]
+        # Generate pair_id for 2-way markets (spreads, totals, player props)
+        # Each pair (home/away, over/under, etc.) gets incrementing ID within each event
+        def assign_pair_ids(group):
+            """Within each event, assign pair_id to 2-way market pairs."""
+            pair_counter = 0
+            pair_map = {}  # Track which sides have been paired
+            
+            for idx, row in group.iterrows():
+                market = row['market_type']
+                point = str(row['point']) if pd.notna(row['point']) else ''
+                selection = row['selection']
+                
+                # Create key for identifying matching pairs
+                pair_key = (market, point)
+                
+                # Check if this is a 2-way market with an opposite side
+                if market in ['spreads', 'totals'] or market.startswith('player_'):
+                    if market == 'spreads':
+                        # Spreads have opposite points (e.g., -7.0 and +7.0)
+                        try:
+                            opp_point = str(-float(point)) if point and point != '' else ''
+                        except:
+                            opp_point = ''
+                        opp_key = (market, opp_point)
+                    else:
+                        # Totals and player props have opposite selections (Over/Under)
+                        opp_selection = 'Under' if selection == 'Over' else 'Over' if selection == 'Under' else None
+                        if opp_selection:
+                            opp_key = (market, point, opp_selection)
+                        else:
+                            opp_key = None
+                    
+                    # Check if opposite side exists in this event
+                    if market == 'spreads':
+                        has_opposite = any((g['market_type'] == market and 
+                                          str(g['point']) == opp_point) 
+                                         for _, g in group.iterrows() if _ != idx)
+                    else:
+                        has_opposite = any((g['market_type'] == market and 
+                                          g['selection'] == opp_selection and
+                                          str(g.get('point', '')) == point) 
+                                         for _, g in group.iterrows() if _ != idx)
+                    
+                    if has_opposite and pair_key not in pair_map:
+                        pair_counter += 1
+                        pair_map[pair_key] = pair_counter
+                    
+                    if pair_key in pair_map:
+                        group.at[idx, 'pair_id'] = pair_map[pair_key]
+                    else:
+                        group.at[idx, 'pair_id'] = None
+                else:
+                    # Single-outcome markets don't get pair_id
+                    group.at[idx, 'pair_id'] = None
+            
+            return group
+        
+        # Initialize pair_id column
+        df['pair_id'] = None
+        
+        # Apply pairing logic per event
+        df = df.groupby('event_id', group_keys=False, include_groups=False).apply(assign_pair_ids)
+        
+        # Reorder columns: core first, then pair_id, then bookmakers
+        core_cols = ["event_id", "extracted_at", "commence_time", "league", "event_name", "market_type", "point", "selection", "player_name", "pair_id"]
         df = df[core_cols + ALL_BOOKMAKERS]
         
         print(f"✅ Extracted {len(df)} odds rows")

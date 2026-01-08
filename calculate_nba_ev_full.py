@@ -502,7 +502,7 @@ def calculate_nba_ev_full():
     
     # Reorder columns: core → best AU book info → fair odds → all bookmakers
     core_cols = ['event_id', 'extracted_at', 'commence_time', 'league', 'event_name', 
-                 'market_type', 'point', 'selection', 'player_name']
+                 'market_type', 'point', 'selection', 'player_name', 'pair_id']
     
     # Only include bookmaker columns that actually exist in the input
     bookmaker_cols = [col for col in BOOKMAKERS_IN_CSV if col in df.columns]

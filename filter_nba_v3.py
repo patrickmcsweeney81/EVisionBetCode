@@ -7,7 +7,7 @@ Usage:
     python filter_nba_v3.py
 
 Output:
-    data/v3/filtered/basketball_nba_filtered_YYYYMMDD_HHMMSS.csv
+    data/v3/extracts/basketball_nba_filtered_*.csv
 """
 
 import pandas as pd
@@ -15,8 +15,9 @@ import glob
 import os
 from datetime import datetime
 import numpy as np
+import networkx as nx
 
-# 2-way market definitions (from calculate script)
+# 2-way market definitions
 TWO_WAY_MARKETS = {
     'totals': {'Over': 'Under', 'Under': 'Over'},
     'spreads': 'pair_with_other_team',
@@ -54,24 +55,23 @@ def get_opposite_selection(market_type, selection):
 def filter_nba_data():
     """Load latest NBA_Raw CSV and create NBA_Filtered CSV with filters applied."""
     
-    # Get latest NBA_Raw CSV (prefer _new.csv if it exists for fresh extraction)
+    # Get latest NBA_Raw CSV
     csv_files = sorted(glob.glob("data/v3/extracts/basketball_nba_raw*.csv"))
     if not csv_files:
-        print("❌ No NBA_Raw CSV files found in data/v3/extracts/")
+        print("[ERROR] No NBA_Raw CSV files found in data/v3/extracts/")
         return
     
     # Prioritize _new.csv (fresh extraction, main file might be locked by backend)
     csv_new = [f for f in csv_files if f.endswith("_new.csv")]
     latest_raw_csv = csv_new[-1] if csv_new else csv_files[-1]
-    print(f"📂 Loading NBA_Raw: {latest_raw_csv}")
+    print(f"[*] Loading NBA_Raw: {latest_raw_csv}")
     
     df = pd.read_csv(latest_raw_csv)
     print(f"   Starting rows: {len(df):,}")
     
-    # ============ APPLY FILTERS HERE ============
+    # ============ APPLY FILTERS ============
     
     # FILTER 1: Normalize market names - consolidate alternates by base market type
-    # Map all variations (alternates, periods) to their base market type
     market_normalization = {
         # Spreads consolidation
         'alternate_spreads': 'spreads',
@@ -99,157 +99,144 @@ def filter_nba_data():
         
         # Team totals consolidation
         'alternate_team_totals': 'team_totals',
-        'alternate_team_totals_q1': 'team_totals',
-        'alternate_team_totals_q2': 'team_totals',
-        'alternate_team_totals_q3': 'team_totals',
-        'alternate_team_totals_q4': 'team_totals',
-        'alternate_team_totals_h1': 'team_totals',
-        'alternate_team_totals_h2': 'team_totals',
+        'team_totals_q1': 'team_totals',
+        'team_totals_q2': 'team_totals',
+        'team_totals_q3': 'team_totals',
+        'team_totals_q4': 'team_totals',
+        'team_totals_h1': 'team_totals',
+        'team_totals_h2': 'team_totals',
         
-        # Player props consolidation
+        # Player points alternates
         'player_points_alternate': 'player_points',
-        'player_assists_alternate': 'player_assists',
+        
+        # Other alternates
         'player_rebounds_alternate': 'player_rebounds',
+        'player_assists_alternate': 'player_assists',
+        'player_threes_alternate': 'player_threes',
         'player_blocks_alternate': 'player_blocks',
         'player_steals_alternate': 'player_steals',
-        'player_passes_alternate': 'player_passes',
-        'player_tackles_alternate': 'player_tackles',
-        'player_goals_alternate': 'player_goals',
-        'player_shots_on_target_alternate': 'player_shots_on_target',
-        
-        # Player combo props consolidation
-        'player_points_assists_alternate': 'player_points_assists',
-        'player_points_rebounds_alternate': 'player_points_rebounds',
-        'player_points_rebounds_assists_alternate': 'player_points_rebounds_assists',
-        'player_rebounds_assists_alternate': 'player_rebounds_assists',
     }
     
-    df['market_type'] = df['market_type'].replace(market_normalization)
-    print(f"✅ After normalizing market names: {len(df):,} rows")
+    df['market_type'] = df['market_type'].map(lambda x: market_normalization.get(x, x))
+    print(f"[OK] After normalizing market names: {len(df):,} rows")
     
-    # FILTER 2: Remove whole number spreads/totals (only keep .5 increments)
-    # For spreads, totals, and team_totals, keep only lines with .5 values
-    spread_total_markets = ['spreads', 'totals', 'team_totals']
-    spread_total_rows = df[df['market_type'].isin(spread_total_markets)]
-    other_markets = df[~df['market_type'].isin(spread_total_markets)]
+    # FILTER 2: Remove whole number spreads/totals (keep only .5 lines)
+    spread_total_rows = df[~df['market_type'].isin(['spreads', 'totals', 'team_totals'])]
     
-    # Filter spreads/totals/team_totals to only .5 increments
-    spread_total_rows = spread_total_rows[spread_total_rows['point'] % 1 == 0.5]
+    spreads_totals = df[df['market_type'].isin(['spreads', 'totals', 'team_totals'])].copy()
+    spreads_totals['is_half'] = spreads_totals['point'].fillna(0) % 1 != 0
+    spreads_totals = spreads_totals[spreads_totals['is_half']]
+    spreads_totals = spreads_totals.drop('is_half', axis=1)
     
-    # Recombine
-    df = pd.concat([spread_total_rows, other_markets], ignore_index=True)
-    print(f"✅ After removing whole number spreads/totals: {len(df):,} rows")
+    df = pd.concat([spread_total_rows, spreads_totals], ignore_index=True)
+    print(f"[OK] After removing whole number spreads/totals: {len(df):,} rows")
     
     # FILTER 3: Keep only lines with at least one sharp book
     sharp_books = ['pinnacle', 'betfair_ex_eu', 'matchbook', 'draftkings', 'fanduel', 'lowvig']
     
-    # Check if row has at least one sharp book with a value (not NaN)
     df['has_sharp_book'] = df[sharp_books].notna().any(axis=1)
     df = df[df['has_sharp_book']]
     df = df.drop('has_sharp_book', axis=1)
-    print(f"✅ After keeping only lines with sharp books: {len(df):,} rows")
+    print(f"[OK] After keeping only lines with sharp books: {len(df):,} rows")
     
     # FILTER 4: Keep only lines with at least one AU bookmaker
     au_books = ['bet365', 'betfair_ex_au', 'sportsbet', 'dabble_au', 'pointsbetau', 
                 'neds', 'ladbrokes_au', 'unibet', 'betright', 'betr_au', 'boombet', 
                 'playup', 'tab', 'tabtouch']
     
-    # Check if row has at least one AU book with a value (not NaN)
     df['has_au_book'] = df[au_books].notna().any(axis=1)
     df = df[df['has_au_book']]
     df = df.drop('has_au_book', axis=1)
-    print(f"✅ After keeping only lines with AU books: {len(df):,} rows")
+    print(f"[OK] After keeping only lines with AU books: {len(df):,} rows")
     
-    # FILTER 5: Remove duplicate bets (same event + selection + point + player_name)
-    # Now that spreads and alternate_spreads are named the same, 
-    # they'll be grouped together and only first occurrence kept
-    # For player props, player_name distinguishes different bets
+    # FILTER 5: Remove duplicate bets
     df = df.drop_duplicates(subset=['event_name', 'market_type', 'selection', 'point', 'player_name'], keep='first')
-    print(f"✅ After removing all duplicate bets: {len(df):,} rows")
+    print(f"[OK] After removing all duplicate bets: {len(df):,} rows")
     
     # ASSIGN PAIR IDs: Match both sides of 2-way markets within each event
-    # This uses same logic as calculate_fair_odds to identify paired markets
-    def assign_pair_ids_per_event(event_group):
-        """Assign pair_id to matched 2-way market pairs within event."""
+    # Using Composite Key approach: (event, market_type, point, player_name)
+    def assign_pair_ids_composite_key(df_full):
+        """Composite Key approach (Option C) - No cross-player/point grouping."""
+        df_full = df_full.copy()
+        df_full['pair_id'] = None
         pair_counter = 0
-        assigned_pairs = set()  # Track which indices we've paired
         
-        for idx, row in event_group.iterrows():
-            if idx in assigned_pairs:
-                continue
+        # Group by composite key: (event_name, market_type, point, player_name)
+        # This ensures each key represents ONE market (not multiple players/points)
+        key_groups = df_full.groupby(['event_name', 'market_type', 'point', 'player_name'], dropna=False)
+        
+        for (event, market, point, player), group_indices in key_groups.groups.items():
+            group = df_full.loc[group_indices].copy()
             
-            market = row['market_type']
-            selection = row['selection']
-            point = row['point']
-            player = row.get('player_name', '')
-            
+            # Only process 2-way markets
             if not is_2way_market(market):
-                # Single-outcome markets get no pair_id
-                event_group.at[idx, 'pair_id'] = None
                 continue
             
-            # Find opposite selection
-            opp_selection = get_opposite_selection(market, selection)
+            # Get unique selections in this group
+            selections = group['selection'].unique()
             
-            if market == 'spreads' or market == 'h2h':
-                # For spreads/h2h: find opposite team with opposite point
-                try:
-                    opp_point = -float(point) if pd.notna(point) else None
-                except:
-                    opp_point = None
-                
-                # Find row with opposite selection and opposite point
-                opposite = event_group[
-                    (event_group['market_type'] == market) &
-                    (event_group['selection'] == opp_selection) &
-                    ((event_group['point'] == opp_point) if opp_point else (event_group['point'].isna()))
-                ]
-            else:
-                # For player props/totals: opposite selection, same point, same player
-                opposite = event_group[
-                    (event_group['market_type'] == market) &
-                    (event_group['selection'] == opp_selection) &
-                    (event_group['point'] == point) &
-                    (event_group['player_name'] == player)
-                ]
-            
-            if not opposite.empty:
-                opp_idx = opposite.index[0]
-                if opp_idx not in assigned_pairs:
-                    # Found matching pair
-                    pair_counter += 1
-                    event_group.at[idx, 'pair_id'] = pair_counter
-                    event_group.at[opp_idx, 'pair_id'] = pair_counter
-                    assigned_pairs.add(idx)
-                    assigned_pairs.add(opp_idx)
-                else:
-                    event_group.at[idx, 'pair_id'] = None
-            else:
-                # Orphaned side (no matching opposite)
-                event_group.at[idx, 'pair_id'] = None
+            if len(selections) == 2:
+                # Perfect pair: Over+Under or Home+Away
+                selection_1, selection_2 = selections[0], selections[1]
+                df_full.loc[group_indices[group['selection'] == selection_1].tolist(), 'pair_id'] = pair_counter
+                df_full.loc[group_indices[group['selection'] == selection_2].tolist(), 'pair_id'] = pair_counter
+                pair_counter += 1
+            elif len(selections) == 1:
+                # Single selection (orphaned - can't pair without opposite)
+                # Leave pair_id as None
+                pass
         
-        return event_group
+        return df_full
     
-    # Initialize pair_id column
-    df['pair_id'] = None
+    # Apply composite key pairing
+    df = assign_pair_ids_composite_key(df)
+    print(f"[OK] After assigning pair_ids (Composite Key): {len(df):,} rows")
     
-    # Apply pairing per event
-    df = df.groupby('event_id', group_keys=False).apply(assign_pair_ids_per_event)
+    # VALIDATION: Check pairing integrity with NetworkX
+    print("\n[VALIDATION] Checking pairing integrity...")
     
-    print(f"✅ Assigned pair_ids: {df['pair_id'].notna().sum()} rows paired (2-way markets only)")
+    # Build validation graph
+    G = nx.Graph()
+    paired_df = df[df['pair_id'].notna()].copy()
+    pair_violations = []
     
-    # Save filtered CSV - overwrites previous file (fallback if locked)
-    output_csv = "data/v3/extracts/basketball_nba_filtered.csv"
-    try:
-        df.to_csv(output_csv, index=False)
-    except PermissionError:
-        # File locked by backend API, save to alternate
-        alt_csv = "data/v3/extracts/basketball_nba_filtered_new.csv"
-        df.to_csv(alt_csv, index=False)
-        print(f"⚠️  Main file locked by backend, saved to: {alt_csv}")
-        output_csv = alt_csv
+    for pair_id, group in paired_df.groupby('pair_id'):
+        # Rule 1: Each pair must have exactly 2 rows
+        if len(group) != 2:
+            pair_violations.append(f"Pair {pair_id}: {len(group)} rows (expected 2)")
+        
+        # Rule 2: Same event, market, point, player
+        if group['event_name'].nunique() > 1:
+            pair_violations.append(f"Pair {pair_id}: Mixed events {group['event_name'].unique().tolist()}")
+        if group['market_type'].nunique() > 1:
+            pair_violations.append(f"Pair {pair_id}: Mixed markets {group['market_type'].unique().tolist()}")
+        if group['point'].nunique() > 1:
+            pair_violations.append(f"Pair {pair_id}: Mixed points {group['point'].unique().tolist()}")
+        if group['player_name'].nunique() > 1:
+            pair_violations.append(f"Pair {pair_id}: Mixed players {group['player_name'].unique().tolist()}")
+        
+        # Rule 3: Opposite selections (Over/Under or Home/Away)
+        selections = group['selection'].unique()
+        if len(selections) != 2:
+            pair_violations.append(f"Pair {pair_id}: {len(selections)} selections (expected 2)")
     
-    print(f"\n✅ NBA_Filtered CSV saved: {output_csv}")
+    if pair_violations:
+        print(f"[WARN] Found {len(pair_violations)} violations:")
+        for v in pair_violations[:10]:  # Show first 10
+            print(f"   - {v}")
+    else:
+        print(f"[OK] All {len(paired_df) // 2} pairs valid (2 rows each, same market/point/player)")
+    
+    # Save output
+    os.makedirs("data/v3/extracts", exist_ok=True)
+    
+    # Use timestamped filename to avoid backend lock issues
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_csv = f"data/v3/extracts/basketball_nba_filtered_{timestamp}.csv"
+    
+    df.to_csv(output_csv, index=False)
+    print(f"[OK] NBA_Filtered CSV saved: {output_csv}")
+    
     print(f"   Final rows: {len(df):,}")
     print(f"\nMarket breakdown:")
     print(df['market_type'].value_counts())

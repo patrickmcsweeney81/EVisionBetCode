@@ -14,6 +14,42 @@ import pandas as pd
 import glob
 import os
 from datetime import datetime
+import numpy as np
+
+# 2-way market definitions (from calculate script)
+TWO_WAY_MARKETS = {
+    'totals': {'Over': 'Under', 'Under': 'Over'},
+    'spreads': 'pair_with_other_team',
+    'h2h': 'pair_with_other_team',
+    'player_rebounds': {'Over': 'Under', 'Under': 'Over'},
+    'player_rebounds_assists': {'Over': 'Under', 'Under': 'Over'},
+    'player_points': {'Over': 'Under', 'Under': 'Over'},
+    'player_points_assists': {'Over': 'Under', 'Under': 'Over'},
+    'player_points_rebounds': {'Over': 'Under', 'Under': 'Over'},
+    'player_points_rebounds_assists': {'Over': 'Under', 'Under': 'Over'},
+    'player_assists': {'Over': 'Under', 'Under': 'Over'},
+    'player_threes': {'Over': 'Under', 'Under': 'Over'},
+    'player_blocks': {'Over': 'Under', 'Under': 'Over'},
+    'player_steals': {'Over': 'Under', 'Under': 'Over'},
+}
+
+def is_2way_market(market_type):
+    """Check if market is 2-way."""
+    return market_type in TWO_WAY_MARKETS
+
+def get_opposite_selection(market_type, selection):
+    """Get opposite selection for 2-way markets."""
+    if market_type not in TWO_WAY_MARKETS:
+        return None
+    
+    mapping = TWO_WAY_MARKETS[market_type]
+    
+    # If mapping is a dict (Over/Under), use it
+    if isinstance(mapping, dict):
+        return mapping.get(selection)
+    
+    # If it's 'pair_with_other_team' (spreads/h2h), handled separately
+    return None
 
 def filter_nba_data():
     """Load latest NBA_Raw CSV and create NBA_Filtered CSV with filters applied."""
@@ -131,7 +167,76 @@ def filter_nba_data():
     df = df.drop_duplicates(subset=['event_name', 'market_type', 'selection', 'point', 'player_name'], keep='first')
     print(f"✅ After removing all duplicate bets: {len(df):,} rows")
     
-    # ============ END FILTERS ============
+    # ASSIGN PAIR IDs: Match both sides of 2-way markets within each event
+    # This uses same logic as calculate_fair_odds to identify paired markets
+    def assign_pair_ids_per_event(event_group):
+        """Assign pair_id to matched 2-way market pairs within event."""
+        pair_counter = 0
+        assigned_pairs = set()  # Track which indices we've paired
+        
+        for idx, row in event_group.iterrows():
+            if idx in assigned_pairs:
+                continue
+            
+            market = row['market_type']
+            selection = row['selection']
+            point = row['point']
+            player = row.get('player_name', '')
+            
+            if not is_2way_market(market):
+                # Single-outcome markets get no pair_id
+                event_group.at[idx, 'pair_id'] = None
+                continue
+            
+            # Find opposite selection
+            opp_selection = get_opposite_selection(market, selection)
+            
+            if market == 'spreads' or market == 'h2h':
+                # For spreads/h2h: find opposite team with opposite point
+                try:
+                    opp_point = -float(point) if pd.notna(point) else None
+                except:
+                    opp_point = None
+                
+                # Find row with opposite selection and opposite point
+                opposite = event_group[
+                    (event_group['market_type'] == market) &
+                    (event_group['selection'] == opp_selection) &
+                    ((event_group['point'] == opp_point) if opp_point else (event_group['point'].isna()))
+                ]
+            else:
+                # For player props/totals: opposite selection, same point, same player
+                opposite = event_group[
+                    (event_group['market_type'] == market) &
+                    (event_group['selection'] == opp_selection) &
+                    (event_group['point'] == point) &
+                    (event_group['player_name'] == player)
+                ]
+            
+            if not opposite.empty:
+                opp_idx = opposite.index[0]
+                if opp_idx not in assigned_pairs:
+                    # Found matching pair
+                    pair_counter += 1
+                    event_group.at[idx, 'pair_id'] = pair_counter
+                    event_group.at[opp_idx, 'pair_id'] = pair_counter
+                    assigned_pairs.add(idx)
+                    assigned_pairs.add(opp_idx)
+                else:
+                    event_group.at[idx, 'pair_id'] = None
+            else:
+                # Orphaned side (no matching opposite)
+                event_group.at[idx, 'pair_id'] = None
+        
+        return event_group
+    
+    # Initialize pair_id column
+    df['pair_id'] = None
+    
+    # Apply pairing per event
+    df = df.groupby('event_id', group_keys=False).apply(assign_pair_ids_per_event)
+    
+    print(f"✅ Assigned pair_ids: {df['pair_id'].notna().sum()} rows paired (2-way markets only)")
     
     # Save filtered CSV - overwrites previous file (fallback if locked)
     output_csv = "data/v3/extracts/basketball_nba_filtered.csv"

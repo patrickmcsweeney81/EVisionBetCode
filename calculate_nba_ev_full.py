@@ -440,21 +440,21 @@ def calculate_nba_ev_full():
     # Load filtered CSV (prefer _new.csv if it exists for fresh extraction)
     csv_files = sorted(glob.glob("data/v3/extracts/basketball_nba_filtered*.csv"))
     if not csv_files:
-        print("❌ No filtered NBA CSV found. Run filter_nba_v3.py first.")
+        print("[ERROR] No filtered NBA CSV found. Run filter_nba_v3.py first.")
         return
     
     # Prioritize _new.csv (fresh filter, main file might be locked by backend)
     csv_new = [f for f in csv_files if f.endswith("_new.csv")]
     filtered_csv = csv_new[-1] if csv_new else csv_files[-1]
     
-    print(f"📂 Loading filtered CSV: {filtered_csv}")
+    print(f"[*] Loading filtered CSV: {filtered_csv}")
     
     df = pd.read_csv(filtered_csv)
     print(f"   Rows: {len(df):,}")
     print(f"   Columns: {len(df.columns)}\n")
     
     # Calculate fair odds and EV
-    print("🧮 Calculating fair odds and EV (with de-vigging for 2-way markets)...")
+    print("[CALC] Calculating fair odds and EV (with de-vigging for 2-way markets)...")
     result = df.apply(lambda row: pd.Series(calculate_fair_odds(row, df)), axis=1)
     df['fair_odds_decimal'] = result[0]
     df['uses_devig'] = result[1]
@@ -485,7 +485,7 @@ def calculate_nba_ev_full():
     
     # Count valid EVs
     valid_evs = df['ev_percent'].notna().sum()
-    print(f"✅ Calculated EV for {valid_evs:,} rows\n")
+    print(f"[OK] Calculated EV for {valid_evs:,} rows\n")
     
     # Format output columns for readability
     df['Best book odds'] = df['best_au_odds_decimal'].apply(
@@ -527,15 +527,15 @@ def calculate_nba_ev_full():
         # File locked by backend API, save to alternate
         alt_csv_full = "data/v3/extracts/basketball_nba_ev_full_new.csv"
         df_output.to_csv(alt_csv_full, index=False)
-        print(f"⚠️  Main file locked by backend, saved to: {alt_csv_full}")
+        print(f"[WARN]  Main file locked by backend, saved to: {alt_csv_full}")
         output_csv_full = alt_csv_full
     
-    print(f"✅ Full EV CSV saved: {output_csv_full}")
+    print(f"[OK] Full EV CSV saved: {output_csv_full}")
     print(f"   Columns: {len(df_output.columns)}")
     print(f"   Rows: {len(df):,}\n")
     
     # Print column summary
-    print("📊 Column Breakdown:")
+    print("[STATS] Column Breakdown:")
     print(f"   Core metadata: 9")
     print(f"   Best AU book info: 2 (best_au_bookmaker, Best book odds [$])")
     print(f"   Market info: 2 (Fair odds, EV [%])")
@@ -544,13 +544,13 @@ def calculate_nba_ev_full():
     print(f"   Bookmakers: {len(bookmaker_cols)}")
     print(f"   Total columns: {len(df_output.columns)}")
     
-    print(f"\n📊 EV Statistics:")
+    print(f"\n[STATS] EV Statistics:")
     print(f"   Mean EV: {df['ev_percent'].mean():.2f}%")
     print(f"   Median EV: {df['ev_percent'].median():.2f}%")
     print(f"   Min EV: {df['ev_percent'].min():.2f}%")
     print(f"   Max EV: {df['ev_percent'].max():.2f}%")
     
-    print(f"\n📈 EV Distribution:")
+    print(f"\n[STATS] EV Distribution:")
     print(f"   Positive EV: {(df['ev_percent'] > 0).sum():,}")
     print(f"   Negative EV: {(df['ev_percent'] < 0).sum():,}")
     

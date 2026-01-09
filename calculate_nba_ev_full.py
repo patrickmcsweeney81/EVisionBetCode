@@ -245,46 +245,320 @@ def calculate_fair_odds(row, df):
     uses_devig = False
     
     if is_2way_market(market_type):
-        event_id = row['event_id']
-        opposite_sel = get_opposite_selection(market_type, row['selection'], event_id, df)
-        point = row.get('point', '')
-        player = row.get('player_name', '')
+        # USE PAIR_ID for reliable pairing (already validated during filter stage)
+        pair_id = row.get('pair_id')
         
-        # Try to find opposite row
-        # Special cases:
-        # - spreads: opposite team has negated point, match by event_id
-        # - player props: opposite selection (Under/Over), match by player_name + market_type + point
-        # - totals/h2h: same point, opposite selection, match by event_id
-        
-        if market_type == 'spreads':
-            # For spreads, opposite point is negated
-            try:
-                opposite_point = -float(point) if pd.notna(point) else ''
-            except:
-                opposite_point = point
-            
-            # Match opposite team with negated point
-            opposite_rows = df[(df['event_id'] == event_id) & 
-                               (df['market_type'] == market_type) & 
-                               (df['selection'] == opposite_sel) &
-                               ((df['point'] == opposite_point) | 
-                                (df['point'].astype(str) == str(opposite_point)))]
-        
-        elif market_type.startswith('player_'):
-            # For player props: match by player_name, market_type, point, opposite selection
-            opposite_rows = df[(df['market_type'] == market_type) & 
-                               (df['player_name'] == player) & 
-                               (df['selection'] == opposite_sel) &
-                               ((pd.isna(point) & pd.isna(df.get('point'))) | 
-                                (df.get('point') == point))]
-        
+        # If pair_id exists, find opposite row using pair_id
+        if pd.notna(pair_id):
+            # Find the opposite row in the same pair (pair_id matches, but different row)
+            same_pair = df[df['pair_id'] == pair_id]
+            opposite_rows = same_pair[same_pair.index != row.name]
         else:
-            # For totals/h2h: same point, opposite selection, match by event_id
-            opposite_rows = df[(df['event_id'] == event_id) & 
-                               (df['market_type'] == market_type) & 
-                               (df['selection'] == opposite_sel) &
-                               ((pd.isna(point) & pd.isna(df.get('point'))) | 
-                                (df.get('point') == point))]
+            # Fallback to old logic if pair_id not available (shouldn't happen with filtered data)
+            event_id = row['event_id']
+            opposite_sel = get_opposite_selection(market_type, row['selection'], event_id, df)
+            point = row.get('point', '')
+            player = row.get('player_name', '')
+            
+            # Try to find opposite row
+            if market_type == 'spreads':
+                # For spreads, opposite point is negated
+                try:
+                    opposite_point = -float(point) if pd.notna(point) else ''
+                except:
+                    opposite_point = point
+                
+                # Match opposite team with negated point
+                opposite_rows = df[(df['event_id'] == event_id) & 
+                                   (df['market_type'] == market_type) & 
+                                   (df['selection'] == opposite_sel) &
+                                   ((df['point'] == opposite_point) | 
+                                    (df['point'].astype(str) == str(opposite_point)))]
+            
+            elif market_type.startswith('player_'):
+                # For player props: match by player_name, market_type, point, opposite selection
+                opposite_rows = df[(df['market_type'] == market_type) & 
+                                   (df['player_name'] == player) & 
+                                   (df['selection'] == opposite_sel) &
+                                   ((pd.isna(point) & pd.isna(df.get('point'))) | 
+                                    (df.get('point') == point))]
+            
+            else:
+                # For totals/h2h: same point, opposite selection, match by event_id
+                opposite_rows = df[(df['event_id'] == event_id) & 
+                                   (df['market_type'] == market_type) & 
+                                   (df['selection'] == opposite_sel) &
+                                   ((pd.isna(point) & pd.isna(df.get('point'))) | 
+                                    (df.get('point') == point))]
+        
+        if not opposite_rows.empty:
+            opposite_row = opposite_rows.iloc[0]
+            devig_probs = {}
+            
+            # De-vig all books (4⭐ + 3⭐ + 2⭐ + 1⭐) that have both sides
+            for book in FAIR_ODDS_BOOKS:
+                if book in available_books and pd.notna(opposite_row[book]):
+                    # Remove Betfair commission if using Betfair exchange
+                    odds_1 = row[book]
+                    odds_2 = opposite_row[book]
+                    
+                    if book == 'betfair_ex_eu':
+                        odds_1 = remove_betfair_commission(odds_1, commission_rate=0.06)
+                        odds_2 = remove_betfair_commission(odds_2, commission_rate=0.06)
+                    
+                    p1_raw = odds_to_implied_prob(odds_1)
+                    p2_raw = odds_to_implied_prob(odds_2)
+                    
+                    if pd.notna(p1_raw) and pd.notna(p2_raw):
+                        p1_devig, _ = devig_2way(p1_raw, p2_raw)
+                        if pd.notna(p1_devig):
+                            devig_probs[book] = p1_devig
+            
+            if len(devig_probs) >= 1:
+                # Separate by rating for MAD-based outlier detection
+                probs_4star = {book: prob for book, prob in devig_probs.items() 
+                              if book in SHARP_BOOKS_4STAR}
+                probs_3star = {book: prob for book, prob in devig_probs.items() 
+                              if book in SHARP_BOOKS_3STAR}
+                probs_2star = {book: prob for book, prob in devig_probs.items() 
+                             if book in SOFT_BOOKS_2STAR}
+                probs_1star = {book: prob for book, prob in devig_probs.items() 
+                             if book in SOFT_BOOKS_1STAR}
+                
+                # MAD-based outlier detection with rating-specific logic
+                final_probs = {}
+                
+                # 4⭐: Almost never auto-remove; only if extreme MAD outlier AND conflicts with other 4⭐/3⭐
+                if len(probs_4star) > 0:
+                    consensus_4_3 = np.median(list(probs_4star.values()) + list(probs_3star.values())) if (probs_4star or probs_3star) else None
+                    
+                    for book, prob in probs_4star.items():
+                        # Only remove if BOTH: MAD outlier AND conflicts with 4⭐/3⭐ consensus
+                        all_4star_probs = list(probs_4star.values())
+                        is_mad_out = is_mad_outlier(prob, all_4star_probs, threshold=2.5) if len(all_4star_probs) >= 3 else False
+                        
+                        if consensus_4_3 is not None:
+                            conflicts_consensus = abs(prob - consensus_4_3) > 0.03  # 3% disagreement = conflict
+                        else:
+                            conflicts_consensus = False
+                        
+                        # Only remove if BOTH conditions met AND we have backup 4/3 star books
+                        should_remove = is_mad_out and conflicts_consensus and len(probs_4star) > 1
+                        
+                        if not should_remove:
+                            final_probs[book] = prob
+                
+                # 3⭐: Keep unless MAD outlier
+                if len(probs_3star) > 0:
+                    all_3star_probs = list(probs_3star.values())
+                    for book, prob in probs_3star.items():
+                        is_mad_out = is_mad_outlier(prob, all_3star_probs, threshold=2.5) if len(all_3star_probs) >= 3 else False
+                        if not is_mad_out:
+                            final_probs[book] = prob
+                
+                # 2⭐: Keep but downweight; remove if MAD outlier
+                if len(probs_2star) > 0:
+                    all_2star_probs = list(probs_2star.values())
+                    for book, prob in probs_2star.items():
+                        is_mad_out = is_mad_outlier(prob, all_2star_probs, threshold=2.5) if len(all_2star_probs) >= 3 else False
+                        if not is_mad_out:
+                            final_probs[book] = prob
+                
+                # 1⭐: Keep but downweight; remove if MAD outlier (rare to have many 1⭐)
+                if len(probs_1star) > 0:
+                    all_1star_probs = list(probs_1star.values())
+                    for book, prob in probs_1star.items():
+                        is_mad_out = is_mad_outlier(prob, all_1star_probs, threshold=2.5) if len(all_1star_probs) >= 2 else False
+                        if not is_mad_out:
+                            final_probs[book] = prob
+                
+                if len(final_probs) >= 1:
+                    # Weighted average
+                    prob_list = list(final_probs.values())
+                    weight_list = [BOOK_WEIGHTS[book] for book in final_probs.keys()]
+                    fair_prob = np.average(prob_list, weights=weight_list)
+                    
+                    # Convert back to decimal odds
+                    fair_decimal = 1.0 / fair_prob if fair_prob > 0 else np.nan
+                    uses_devig = True
+                    return fair_decimal, uses_devig
+    
+    # Fall back to weighted probability average for single-outcome markets
+    probs_single = {}
+    for book in available_books:
+        odds = row[book]
+        # Remove Betfair commission if using Betfair exchange
+        if book == 'betfair_ex_eu':
+            odds = remove_betfair_commission(odds, commission_rate=0.06)
+        prob = odds_to_implied_prob(odds)
+        if pd.notna(prob):
+            probs_single[book] = prob
+    
+    if probs_single:
+        probs = list(probs_single.values())
+        weights = [BOOK_WEIGHTS[book] for book in probs_single.keys()]
+        fair_decimal = 1.0 / np.average(probs, weights=weights)
+        return fair_decimal, uses_devig
+    
+    return np.nan, uses_devig
+
+
+def calculate_fair_odds_fast(row, df, pair_lookup):
+    """
+    Fast version using pre-built pair_lookup (avoids repeated dataframe lookups).
+    """
+    available_books = [book for book in FAIR_ODDS_BOOKS if pd.notna(row[book])]
+    
+    if not available_books:
+        return np.nan, False
+    
+    # Check if this is a 2-way market with available opposite
+    market_type = row['market_type']
+    uses_devig = False
+    
+    if is_2way_market(market_type):
+        # USE PAIR_ID for reliable pairing (already validated during filter stage)
+        pair_id = row.get('pair_id')
+        
+        # If pair_id exists, find opposite row using pair_lookup
+        if pd.notna(pair_id) and pair_id in pair_lookup:
+            pair_indices = pair_lookup[pair_id]
+            # Find the other row in this pair
+            opposite_idx = [idx for idx in pair_indices if idx != row.name]
+            
+            if opposite_idx:
+                opposite_row = df.loc[opposite_idx[0]]
+                devig_probs = {}
+                
+                # De-vig all books (4⭐ + 3⭐ + 2⭐ + 1⭐) that have both sides
+                for book in FAIR_ODDS_BOOKS:
+                    if book in available_books and pd.notna(opposite_row[book]):
+                        # Remove Betfair commission if using Betfair exchange
+                        odds_1 = row[book]
+                        odds_2 = opposite_row[book]
+                        
+                        if book == 'betfair_ex_eu':
+                            odds_1 = remove_betfair_commission(odds_1, commission_rate=0.06)
+                            odds_2 = remove_betfair_commission(odds_2, commission_rate=0.06)
+                        
+                        p1_raw = odds_to_implied_prob(odds_1)
+                        p2_raw = odds_to_implied_prob(odds_2)
+                        
+                        if pd.notna(p1_raw) and pd.notna(p2_raw):
+                            p1_devig, _ = devig_2way(p1_raw, p2_raw)
+                            if pd.notna(p1_devig):
+                                devig_probs[book] = p1_devig
+                
+                if len(devig_probs) >= 1:
+                    # Use weighted average directly (skip MAD outlier detection for speed)
+                    prob_list = list(devig_probs.values())
+                    weight_list = [BOOK_WEIGHTS[book] for book in devig_probs.keys()]
+                    fair_prob = np.average(prob_list, weights=weight_list)
+                    
+                    # Convert back to decimal odds
+                    fair_decimal = 1.0 / fair_prob if fair_prob > 0 else np.nan
+                    uses_devig = True
+                    return fair_decimal, uses_devig
+    
+    # Fall back to weighted probability average for single-outcome markets
+    probs_single = {}
+    for book in available_books:
+        odds = row[book]
+        # Remove Betfair commission if using Betfair exchange
+        if book == 'betfair_ex_eu':
+            odds = remove_betfair_commission(odds, commission_rate=0.06)
+        prob = odds_to_implied_prob(odds)
+        if pd.notna(prob):
+            probs_single[book] = prob
+    
+    if probs_single:
+        probs = list(probs_single.values())
+        weights = [BOOK_WEIGHTS[book] for book in probs_single.keys()]
+        fair_decimal = 1.0 / np.average(probs, weights=weights)
+        return fair_decimal, uses_devig
+    
+    return np.nan, uses_devig
+
+def calculate_best_au_odds(row):
+    """
+    Calculate fair odds using weighted average across ALL books with MAD-based outlier detection:
+    
+    4⭐ sharp books: weight 1.5
+      - Almost never auto-remove (preserves best data)
+      - Only remove if BOTH: MAD outlier AND conflicts with other 4⭐/3⭐ consensus
+    
+    3⭐ sharp books: weight 1.0
+      - Keep unless MAD outlier (statistically extreme)
+    
+    2⭐ soft books: weight 0.75
+      - Keep but downweight; remove if MAD outlier
+    
+    1⭐ soft books: weight 0.5
+      - Keep but downweight; remove if MAD outlier
+    
+    Outlier Detection: Median Absolute Deviation (MAD)
+      - More robust than % trim (doesn't assume linear scaling)
+      - threshold=2.5 equivalent to ~2.5 std devs (lenient on noise)
+      - Adaptive to actual disagreement in data
+    
+    For 2-way markets: de-vig first, then weighted average.
+    For single-outcome markets: simple weighted average of implied probabilities.
+    """
+    available_books = [book for book in FAIR_ODDS_BOOKS if pd.notna(row[book])]
+    
+    if not available_books:
+        return np.nan, False
+    
+    # Check if this is a 2-way market with available opposite
+    market_type = row['market_type']
+    uses_devig = False
+    
+    if is_2way_market(market_type):
+        # USE PAIR_ID for reliable pairing (already validated during filter stage)
+        pair_id = row.get('pair_id')
+        
+        # If pair_id exists, find opposite row using pair_id
+        if pd.notna(pair_id):
+            # Find the opposite row in the same pair (pair_id matches, but different row)
+            same_pair = df[df['pair_id'] == pair_id]
+            opposite_rows = same_pair[same_pair.index != row.name]
+        else:
+            # Fallback to old logic if pair_id not available (shouldn't happen with filtered data)
+            event_id = row['event_id']
+            opposite_sel = get_opposite_selection(market_type, row['selection'], event_id, df)
+            point = row.get('point', '')
+            player = row.get('player_name', '')
+            
+            # Try to find opposite row
+            if market_type == 'spreads':
+                # For spreads, opposite point is negated
+                try:
+                    opposite_point = -float(point) if pd.notna(point) else ''
+                except:
+                    opposite_point = point
+                
+                # Match opposite team with negated point
+                opposite_rows = df[(df['event_id'] == event_id) & 
+                                   (df['market_type'] == market_type) & 
+                                   (df['selection'] == opposite_sel) &
+                                   ((df['point'] == opposite_point) | 
+                                    (df['point'].astype(str) == str(opposite_point)))]
+            
+            elif market_type.startswith('player_'):
+                # For player props: match by player_name, market_type, point, opposite selection
+                opposite_rows = df[(df['market_type'] == market_type) & 
+                                   (df['player_name'] == player) & 
+                                   (df['selection'] == opposite_sel) &
+                                   ((pd.isna(point) & pd.isna(df.get('point'))) | 
+                                    (df.get('point') == point))]
+            
+            else:
+                # For totals/h2h: same point, opposite selection, match by event_id
+                opposite_rows = df[(df['event_id'] == event_id) & 
+                                   (df['market_type'] == market_type) & 
+                                   (df['selection'] == opposite_sel) &
+                                   ((pd.isna(point) & pd.isna(df.get('point'))) | 
+                                    (df.get('point') == point))]
         
         if not opposite_rows.empty:
             opposite_row = opposite_rows.iloc[0]
@@ -453,11 +727,34 @@ def calculate_nba_ev_full():
     print(f"   Rows: {len(df):,}")
     print(f"   Columns: {len(df.columns)}\n")
     
+    # PRE-BUILD pair_id lookup to speed up calculations (avoids repeated df lookups)
+    print("[PREP] Building pair_id lookup table...")
+    pair_lookup = {}
+    for idx, row in df.iterrows():
+        pair_id = row['pair_id']
+        if pd.notna(pair_id):
+            if pair_id not in pair_lookup:
+                pair_lookup[pair_id] = []
+            pair_lookup[pair_id].append(idx)
+    print(f"[OK] Pair lookup built: {len(pair_lookup):,} unique pairs\n")
+    
     # Calculate fair odds and EV
     print("[CALC] Calculating fair odds and EV (with de-vigging for 2-way markets)...")
-    result = df.apply(lambda row: pd.Series(calculate_fair_odds(row, df)), axis=1)
-    df['fair_odds_decimal'] = result[0]
-    df['uses_devig'] = result[1]
+    
+    # Use iterrows with pair_lookup for faster access
+    fair_odds_list = []
+    uses_devig_list = []
+    
+    for idx, row in df.iterrows():
+        fair_odds, uses_devig = calculate_fair_odds_fast(row, df, pair_lookup)
+        fair_odds_list.append(fair_odds)
+        uses_devig_list.append(uses_devig)
+        
+        if (idx + 1) % 2000 == 0:
+            print(f"  ... processed {idx + 1:,} / {len(df):,} rows")
+    
+    df['fair_odds_decimal'] = fair_odds_list
+    df['uses_devig'] = uses_devig_list
     
     df['best_au_odds_decimal'] = df.apply(calculate_best_au_odds, axis=1)
     df['best_au_bookmaker'] = df.apply(get_best_au_bookmaker, axis=1)

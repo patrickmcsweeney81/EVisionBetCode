@@ -106,15 +106,19 @@ def filter_nba_data():
         'team_totals_h1': 'team_totals',
         'team_totals_h2': 'team_totals',
         
-        # Player points alternates
+        # Player single stat alternates
         'player_points_alternate': 'player_points',
-        
-        # Other alternates
         'player_rebounds_alternate': 'player_rebounds',
         'player_assists_alternate': 'player_assists',
         'player_threes_alternate': 'player_threes',
         'player_blocks_alternate': 'player_blocks',
         'player_steals_alternate': 'player_steals',
+        
+        # Player combo stat alternates (align with base markets)
+        'player_points_rebounds_alternate': 'player_points_rebounds',
+        'player_points_rebounds_assists_alternate': 'player_points_rebounds_assists',
+        'player_points_assists_alternate': 'player_points_assists',
+        'player_rebounds_assists_alternate': 'player_rebounds_assists',
     }
     
     df['market_type'] = df['market_type'].map(lambda x: market_normalization.get(x, x))
@@ -161,9 +165,34 @@ def filter_nba_data():
         df_full['pair_id'] = None
         pair_counter = 0
         
-        # Group by composite key: (event_name, market_type, point, player_name)
-        # This ensures each key represents ONE market (not multiple players/points)
-        key_groups = df_full.groupby(['event_name', 'market_type', 'point', 'player_name'], dropna=False)
+        # SPECIAL HANDLING FOR SPREADS: Group by (event, market, |point|)
+        # Spreads have opposite signs: Boston -10.5 and Toronto +10.5 are the same line
+        # Key insight: |-10.5| = |10.5| = 10.5, so they group together
+        if 'spreads' in df_full['market_type'].values:
+            spreads_df = df_full[df_full['market_type'] == 'spreads'].copy()
+            spreads_df['abs_point'] = spreads_df['point'].abs()
+            
+            # Group by (event, market, absolute point value) only
+            for (event, market, abs_point), group_indices in spreads_df.groupby(['event_name', 'market_type', 'abs_point'], dropna=False).groups.items():
+                group = spreads_df.loc[group_indices].copy()
+                
+                # Get unique selections (should be exactly 2 teams)
+                selections = group['selection'].unique()
+                
+                # Assign same pair_id to all rows in this group (they're all the same line, different signs)
+                if len(selections) >= 2:
+                    # Both teams have the same |point| → same line
+                    df_full.loc[group_indices, 'pair_id'] = pair_counter
+                    pair_counter += 1
+                elif len(selections) == 1:
+                    # Single selection - orphaned line, can't pair
+                    pass
+        
+        # NORMAL HANDLING FOR OTHER MARKETS: Group by exact point value
+        # For player props: same player, same point → Over/Under pair
+        # For totals: same event, same point → Over/Under pair
+        non_spreads = df_full[df_full['market_type'] != 'spreads']
+        key_groups = non_spreads.groupby(['event_name', 'market_type', 'point', 'player_name'], dropna=False)
         
         for (event, market, point, player), group_indices in key_groups.groups.items():
             group = df_full.loc[group_indices].copy()
@@ -178,8 +207,10 @@ def filter_nba_data():
             if len(selections) == 2:
                 # Perfect pair: Over+Under or Home+Away
                 selection_1, selection_2 = selections[0], selections[1]
-                df_full.loc[group_indices[group['selection'] == selection_1].tolist(), 'pair_id'] = pair_counter
-                df_full.loc[group_indices[group['selection'] == selection_2].tolist(), 'pair_id'] = pair_counter
+                indices_1 = group_indices[group['selection'] == selection_1].tolist()
+                indices_2 = group_indices[group['selection'] == selection_2].tolist()
+                df_full.loc[indices_1, 'pair_id'] = pair_counter
+                df_full.loc[indices_2, 'pair_id'] = pair_counter
                 pair_counter += 1
             elif len(selections) == 1:
                 # Single selection (orphaned - can't pair without opposite)
@@ -201,31 +232,42 @@ def filter_nba_data():
     pair_violations = []
     
     for pair_id, group in paired_df.groupby('pair_id'):
-        # Rule 1: Each pair must have exactly 2 rows
-        if len(group) != 2:
-            pair_violations.append(f"Pair {pair_id}: {len(group)} rows (expected 2)")
+        # For spreads: can have 4+ rows (multiple bookmakers per team)
+        # For others: must have exactly 2 rows (Over+Under or Home+Away)
+        market_type = group['market_type'].iloc[0]
+        expected_rows = "2+" if market_type == 'spreads' else "2"
+        
+        # Rule 1: Each pair must have >= 2 rows (spreads can have 4+)
+        if market_type == 'spreads':
+            if len(group) < 2:
+                pair_violations.append(f"Pair {pair_id}: {len(group)} rows (expected 2+)")
+        else:
+            if len(group) != 2:
+                pair_violations.append(f"Pair {pair_id}: {len(group)} rows (expected 2)")
         
         # Rule 2: Same event, market, point, player
         if group['event_name'].nunique() > 1:
             pair_violations.append(f"Pair {pair_id}: Mixed events {group['event_name'].unique().tolist()}")
         if group['market_type'].nunique() > 1:
             pair_violations.append(f"Pair {pair_id}: Mixed markets {group['market_type'].unique().tolist()}")
-        if group['point'].nunique() > 1:
+        # Spreads can have mixed points due to |point| grouping (that's OK)
+        if market_type != 'spreads' and group['point'].nunique() > 1:
             pair_violations.append(f"Pair {pair_id}: Mixed points {group['point'].unique().tolist()}")
         if group['player_name'].nunique() > 1:
             pair_violations.append(f"Pair {pair_id}: Mixed players {group['player_name'].unique().tolist()}")
         
         # Rule 3: Opposite selections (Over/Under or Home/Away)
         selections = group['selection'].unique()
-        if len(selections) != 2:
-            pair_violations.append(f"Pair {pair_id}: {len(selections)} selections (expected 2)")
+        if len(selections) < 2:
+            pair_violations.append(f"Pair {pair_id}: Only {len(selections)} selection (expected 2)")
     
     if pair_violations:
         print(f"[WARN] Found {len(pair_violations)} violations:")
         for v in pair_violations[:10]:  # Show first 10
             print(f"   - {v}")
     else:
-        print(f"[OK] All {len(paired_df) // 2} pairs valid (2 rows each, same market/point/player)")
+        total_pairs = len(paired_df) // 2 if df[df['market_type'] != 'spreads']['pair_id'].notna().sum() > 0 else "multiple"
+        print(f"[OK] All pairs valid (2 rows for player props, 4+ rows for spreads)")
     
     # Save output
     os.makedirs("data/v3/extracts", exist_ok=True)

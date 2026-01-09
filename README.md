@@ -2,7 +2,7 @@
 ## NBA Odds Extraction & EV Calculation
 
 **Status:** ✅ Production Ready  
-**Last Updated:** January 7, 2026  
+**Last Updated:** January 9, 2026  
 **Active Pipeline:** `run_nba_pipeline.py` (one-command orchestrator)
 
 ---
@@ -10,11 +10,11 @@
 ## 🎯 WHAT THIS DOES
 
 Complete NBA odds pipeline with EV calculation:
-- **Extract:** 3,496 raw odds from The Odds API
-- **Filter:** 1,102 lines (sharp books + Australian bookmakers)
+- **Extract:** 18,994 raw odds from The Odds API (12 NBA events)
+- **Filter:** 8,269 lines (sharp books + Australian bookmakers) with **Composite Key pairing**
 - **Outlier:** MAD-based statistical filtering
-- **Calculate:** 46-column EV analysis with fair odds
-- **Output:** `basketball_nba_ev_full.csv` with 29 positive EV opportunities
+- **Calculate:** 47-column EV analysis with fair odds & de-vigging
+- **Output:** `basketball_nba_ev_full.csv` with 1,270 positive EV opportunities
 
 ---
 
@@ -26,14 +26,14 @@ pip install -e ".[dev]"
 echo ODDS_API_KEY=your_key > .env
 
 # 2. Run entire pipeline (Extract → Filter → Outlier → EV)
-python run_nba_pipeline.py
+python run_nba_pipeline.py --extract
 
 # 3. Check results
 # Files saved in: data/v3/extracts/basketball_nba_ev_full.csv
-# Results: 1,102 lines, 46 columns, 29 positive EV
+# Results: 8,269 lines, 47 columns, 1,270 positive EV, 1,592 pairs
 ```
 
-**Result:** Complete EV-ranked opportunities ready for backend/frontend in ~2 minutes.
+**Result:** Complete EV-ranked opportunities ready for backend/frontend in ~3 minutes.
 
 ---
 

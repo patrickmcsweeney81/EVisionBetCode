@@ -36,28 +36,32 @@
 
 ---
 
-## 📍 CURRENT STATUS (January 7, 2026 - TEAM COLUMN ADDED)
+## 📍 CURRENT STATUS (January 9, 2026 - Composite Key Pairing Implementation)
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **NBA Extraction (V3)** | ✅ Enhanced | `extract_nba_v3.py` → **Dedicated 'team' column for team_totals** |
-| **NBA Filtering (V3)** | ✅ Enhanced | `filter_nba_v3.py` → **'team' included in dedup logic** |
+| **NBA Extraction (V3)** | ✅ Production | `extract_nba_v3.py` → 18,994 odds rows, 12 events |
+| **NBA Filtering (V3)** | ✅ Enhanced | `filter_nba_v3.py` → **Composite Key pairing (1,592 pairs)** |
+| **Composite Key Algorithm** | ✅ NEW | Groups by (event, market_type, point, player_name) → Zero cross-player bugs |
+| **NetworkX Validation** | ✅ NEW | 5-point validation (cardinality, event, market, point, player consistency) |
+| **pytest Suite** | ✅ NEW | 8 tests covering normal + edge cases (100% passing) |
 | **Outlier Detection** | ✅ Production | `outlier_nba_v3.py` → MAD-based filtering |
-| **EV Calculation** | ✅ Enhanced | `calculate_nba_ev_full.py` → **46 columns, includes 'team'** |
+| **EV Calculation** | ✅ Production | `calculate_nba_ev_full.py` → 47 columns, 1,270 positive EV |
 | **Pipeline Orchestrator** | ✅ Production | `run_nba_pipeline.py` → All 4 stages in one command |
 | **Backend API** | ✅ Ready | FastAPI on :8000, CORS enabled, reads latest CSV |
 | **Frontend** | ✅ Ready | React 19 + TypeScript on :3000 |
 | **Git Repos** | ✅ Clean | main branch, all changes pushed to GitHub |
-| **Documentation** | ✅ Updated | TEAM_COLUMN_IMPLEMENTATION.md added |
+| **Documentation** | ✅ Updated | PAIRING_IMPLEMENTATION_SUMMARY.md added |
 
-**Just Completed (Jan 7, Latest - Commit 7fcd12e):**
-- ✅ Added dedicated `team` column to extraction for team_totals markets
-- ✅ Separated `team` from `player_name` for clarity (player props vs team props)
-- ✅ Updated filter deduplication to include `team` column
-- ✅ Updated EV output CSV to include `team` column
-- ✅ Team identifiers now extracted from Odds API `description` field
-- ✅ Tested full pipeline with new column structure (22,630 raw rows → 7,547 filtered)
-- ✅ Committed and pushed to GitHub (Commit: 7fcd12e)
+**Just Completed (Jan 9, Latest - Commit 85b6694):**
+- ✅ Implemented Composite Key pairing algorithm (Option C from research)
+- ✅ Added NetworkX 5-point validation (cardinality, event, market, point, player)
+- ✅ Created 8 pytest tests (100% passing)
+- ✅ Ran full pipeline: 18,994 odds → 8,269 filtered → 1,270 positive EV
+- ✅ Verified 1,592 pairs with 100% correct cardinality (2 rows each)
+- ✅ Fixed cross-player grouping bug completely
+- ✅ Committed and pushed to GitHub (Commit: 85b6694)
+- ✅ All validation checks passing (5/5)
 
 **Previous Completion (Jan 7, Earlier - Commit 73534fd):**
 - ✅ Removed all period-specific markets (q1-q4, h1-h2) from extraction

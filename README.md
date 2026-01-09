@@ -47,6 +47,9 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 
+# Setup pre-commit hooks (auto-format on commit)
+pre-commit install
+
 # Setup Frontend
 cd C:\EVisionBetSite\frontend
 npm install
@@ -56,6 +59,8 @@ code --install-extension bradlc.vscode-tailwindcss
 code --install-extension esbenp.prettier-vscode
 code --install-extension GitHub.copilot
 ```
+
+**💡 Efficiency Tip:** Pre-commit hooks auto-format code before every commit. See [VSCODE_SETUP.md](VSCODE_SETUP.md) for hot reload workflow.
 
 ### 2. Daily Development (3 Terminals)
 

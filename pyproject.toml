@@ -52,6 +52,7 @@ dev = [
     "flake8>=6.1.0",
     "mypy>=1.7.0",
     "pylint>=3.0.0",
+    "pre-commit>=3.0.0",
 ]
 all = ["ev-arb-bot[telegram,dev]"]
 

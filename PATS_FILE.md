@@ -36,32 +36,33 @@
 
 ---
 
-## 📍 CURRENT STATUS (January 9, 2026 - Composite Key Pairing Implementation)
+## 📍 CURRENT STATUS (January 10, 2026 - Multi-Sport Pipeline Complete)
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **NBA Extraction (V3)** | ✅ Production | `extract_nba_v3.py` → 18,994 odds rows, 12 events |
-| **NBA Filtering (V3)** | ✅ Enhanced | `filter_nba_v3.py` → **Composite Key pairing (1,592 pairs)** |
-| **Composite Key Algorithm** | ✅ NEW | Groups by (event, market_type, point, player_name) → Zero cross-player bugs |
-| **NetworkX Validation** | ✅ NEW | 5-point validation (cardinality, event, market, point, player consistency) |
-| **pytest Suite** | ✅ NEW | 8 tests covering normal + edge cases (100% passing) |
-| **Outlier Detection** | ✅ Production | `outlier_nba_v3.py` → MAD-based filtering |
-| **EV Calculation** | ✅ Production | `calculate_nba_ev_full.py` → 47 columns, 1,270 positive EV |
-| **Pipeline Orchestrator** | ✅ Production | `run_nba_pipeline.py` → All 4 stages in one command |
+| **NBA Extraction** | ✅ Production | `extract_nba_v3.py` → Raw odds, 12 events |
+| **NFL Extraction** | ✅ Production | `extract_nfl_v3.py` → Raw odds, 8 events |
+| **NBA Filtering** | ✅ Production | `filter_nba_v3.py` → Composite Key pairing, 728 pairs |
+| **NFL Filtering** | ✅ Production | `filter_nfl_v3.py` → Composite Key pairing, 461 pairs |
+| **Composite Key Algorithm** | ✅ NEW | Groups by (event, market_type, point, player_name) |
+| **Strict Spreads Validator** | ✅ NEW | +x/-x enforcement, multi-sport support |
+| **Outlier Detection** | ✅ Production | MAD-based filtering (NBA + NFL) |
+| **EV Calculation** | ✅ Production | De-vigging, fair odds, 47-column output |
+| **Pipeline Orchestrator** | ✅ Production | `orchestrate_pipeline.py` → Parallel execution, audit |
 | **Backend API** | ✅ Ready | FastAPI on :8000, CORS enabled, reads latest CSV |
 | **Frontend** | ✅ Ready | React 19 + TypeScript on :3000 |
 | **Git Repos** | ✅ Clean | main branch, all changes pushed to GitHub |
 | **Documentation** | ✅ Updated | PAIRING_IMPLEMENTATION_SUMMARY.md added |
 
-**Just Completed (Jan 9, Latest - Commit 85b6694):**
-- ✅ Implemented Composite Key pairing algorithm (Option C from research)
-- ✅ Added NetworkX 5-point validation (cardinality, event, market, point, player)
-- ✅ Created 8 pytest tests (100% passing)
-- ✅ Ran full pipeline: 18,994 odds → 8,269 filtered → 1,270 positive EV
-- ✅ Verified 1,592 pairs with 100% correct cardinality (2 rows each)
-- ✅ Fixed cross-player grouping bug completely
-- ✅ Committed and pushed to GitHub (Commit: 85b6694)
-- ✅ All validation checks passing (5/5)
+**Just Completed (Jan 10, Latest - Commit 7707182):**
+- ✅ Multi-sport pairing validator (NBA + NFL)
+- ✅ Strict spreads +x/-x validator (7-point validation)
+- ✅ All checks passing: NBA 728 pairs, NFL 461 pairs
+- ✅ Updated PAIRING_IMPLEMENTATION_SUMMARY.md with latest status
+- ✅ Validated cross-sport consistency (zero violations)
+- ✅ Orchestrated pipeline tested: Extract → Filter → Manage → Calculate → Merge → Audit
+- ✅ AllSports_EV.csv merged output: 6,270 rows (NBA 3,208 + NFL 2,766)
+- ✅ Committed and pushed to GitHub (Commit: 7707182)
 
 **Previous Completion (Jan 7, Earlier - Commit 73534fd):**
 - ✅ Removed all period-specific markets (q1-q4, h1-h2) from extraction
@@ -77,27 +78,40 @@
 - ✅ Cleaned up 14 debug/analysis scripts from repo
 - ✅ Pushed to GitHub (commit 73534fd)
 
-**Production Data Pipeline (Current):**
+**Production Data Pipeline (Current - Multi-Sport):**
 ```
-extract_nba_v3.py (30 main markets, no periods)
-    ↓ (17,240 rows)
-filter_nba_v3.py (consolidate alternates, sharp+AU books)
-    ↓ (1,325 rows, 21 market types)
-outlier_nba_v3.py (MAD-based detection)
+Parallel Extraction (NBA + NFL)
     ↓
-calculate_nba_ev_full.py (57 2-way configs, all de-vigged)
-    ↓ (1,325 rows, 45 columns, 239 positive EV)
-backend_api.py (reads latest CSV)
+NBA_Raw.csv (11,669 rows) | NFL_Raw.csv (4,424 rows)
+    ↓
+Parallel Filtering (Composite Key pairing)
+    ↓
+NBA_Filtered.csv (1,456 rows, 728 pairs) | NFL_Filtered.csv (922 rows, 461 pairs)
+    ↓
+manage_allsports_ev.py (archive dated, keep 4 days)
+    ↓
+Parallel EV Calculation (fair odds + de-vigging)
+    ↓
+NBA_EV.csv | NFL_EV.csv
+    ↓
+Merge → AllSports_EV.csv (6,270 rows total)
+    ↓
+audit_pipeline.py (stage counts + line-loss)
+    ↓
+backend_api.py (serves merged AllSports_EV.csv)
     ↓
 Frontend React app
 ```
 
-**What's Active (7 Production Scripts):**
-- extract_nba_v3.py - Fetch odds from API
-- filter_nba_v3.py - Market consolidation + filtering
-- outlier_nba_v3.py - Statistical outlier detection
-- calculate_nba_ev_full.py - Fair odds + EV with de-vigging
-- run_nba_pipeline.py - Orchestrator (Extract → Filter → Outlier → EV)
+**What's Active (12 Production Scripts):**
+- extract_nba_v3.py / extract_nfl_v3.py - Fetch odds from API
+- filter_nba_v3.py / filter_nfl_v3.py - Composite Key pairing + filtering
+- outlier_nba_v3.py / outlier_nfl_v3.py - MAD-based outlier detection
+- calculate_nba_ev_full.py / calculate_nfl_ev_full.py - Fair odds + EV calculation
+- orchestrate_pipeline.py - Parallel multi-sport orchestrator
+- manage_allsports_ev.py - Date archiving + retention (4 days)
+- audit_pipeline.py - Stage counts + line-loss analysis
+- validate_pairing_results.py - 7-point validation (NBA + NFL)
 - backend_api.py - FastAPI server
 - bookmaker_ratings.py - Bookmaker weight config
 

@@ -9,19 +9,24 @@
 
 ---
 
-## Current Architecture (V3 - Active)
+## Current Architecture (V3 - Multi-Sport Active)
 
 **Data Flow:**
 ```
-The Odds API → extract_nba_v3.py → data/v3/extracts/*.csv → backend_api.py → Frontend React
+The Odds API → extract_nba_v3.py + extract_nfl_v3.py → orchestrate_pipeline.py → AllSports_EV.csv → backend_api.py → Frontend React
 ```
 
 **Active Files:**
-- `extract_nba_v3.py` - NBA odds extraction (186 lines)
+- `extract_nba_v3.py` / `extract_nfl_v3.py` - Sport-specific odds extraction
+- `filter_nba_v3.py` / `filter_nfl_v3.py` - Composite Key pairing + filtering
+- `orchestrate_pipeline.py` - Parallel multi-sport pipeline orchestrator
+- `manage_allsports_ev.py` - Date archiving and retention (4 days)
+- `audit_pipeline.py` - Stage counts and line-loss analysis
+- `validate_pairing_results.py` - 7-point validation (strict spreads +x/-x)
 - `backend_api.py` - FastAPI server + CSV reader (CORS enabled)
-- `bookmaker_ratings.py` - Bookmaker weight tiers (1⭐ target vs 3⭐/4⭐ sharp)
+- `bookmaker_ratings.py` - Bookmaker weight tiers (4⭐ sharp vs 0⭐ AU target)
 - `pyproject.toml` - Dependencies (canonical source)
-- `data/v3/extracts/` - Latest timestamped CSV (286 rows, 53 bookmakers)
+- `data/v3/extracts/` - AllSports_EV.csv (6,270 rows: NBA 3,208 + NFL 2,766)
 
 **Archived (Reference Only):**
 - `archive/` folder contains v1/v2 pipeline code (two-stage calculation, EV math, fair odds logic)
@@ -29,22 +34,23 @@ The Odds API → extract_nba_v3.py → data/v3/extracts/*.csv → backend_api.py
 
 ---
 
-## Critical Pattern: Multi-Line Extraction ✅ FIXED (Dec 28)
+## Critical Pattern: Composite Key Pairing ✅ ACTIVE (Jan 10)
 
-**Each unique `(market_type, selection, point)` gets its own row.**
+**Each unique `(event_name, market_type, point, player_name)` gets its own pair_id.**
 
-❌ **Wrong:** Consolidate all spreads to "most common point" (loses data)
-✅ **Right:** Every spread variation (-6.5, -7.0, -7.5, etc.) is a separate row with all bookmakers' odds
+❌ **Wrong:** Group by point only (causes cross-player pairing bugs)
+✅ **Right:** Every market is uniquely identified by event + market + point + player
 
 **Example (correct):**
 ```
-| market | selection | point | book1_odds | book2_odds | ... |
-| spread | home      | -6.5  | -110       | -108       | ... |
-| spread | home      | -7.0  | -110       | -105       | ... |
-| spread | home      | -7.5  | -112       | -110       | ... |
+| event_name | market_type | player_name | point | selection | pair_id |
+| Game A     | player_pts  | Player X    | 3.5   | Over      | 0       |
+| Game A     | player_pts  | Player X    | 3.5   | Under     | 0       |
+| Game A     | player_pts  | Player Y    | 3.5   | Over      | 1       |
+| Game A     | player_pts  | Player Y    | 3.5   | Under     | 1       |
 ```
 
-Result: 12 NBA events → 286 total rows (124 spreads + 162 other markets)
+Result: NBA 728 pairs (1,456 rows), NFL 461 pairs (922 rows), zero cross-player bugs
 
 ---
 

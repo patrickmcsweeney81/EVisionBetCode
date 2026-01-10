@@ -836,6 +836,36 @@ def calculate_nba_ev_full():
     print(f"[OK] Full EV CSV saved: {output_csv_full}")
     print(f"   Columns: {len(df_output.columns)}")
     print(f"   Rows: {len(df):,}\n")
+
+    # Build normalized all-sports EV CSV (backend/frontend friendly headers)
+    df_all = df.copy()
+    df_all['sport'] = 'basketball_nba'
+    df_all['best_book'] = df_all['best_au_bookmaker']
+    df_all['best_odds'] = df_all['best_au_odds_decimal']
+    df_all['fair_odds'] = df_all['fair_odds_decimal']
+
+    normalized_cols = [
+        'sport', 'event_id', 'extracted_at', 'commence_time', 'league', 'event_name',
+        'market_type', 'point', 'selection', 'player_name', 'pair_id',
+        'best_book', 'best_odds', 'ev_percent', 'fair_odds',
+        'total_books', 'uses_devig'
+    ]
+    normalized_cols = [c for c in normalized_cols if c in df_all.columns]
+    normalized_cols_with_books = normalized_cols + bookmaker_cols
+    df_all_output = df_all[normalized_cols_with_books].copy()
+
+    os.makedirs("data/v3/extracts", exist_ok=True)
+    all_sports_ev = "data/v3/extracts/AllSports_EV.csv"
+    try:
+        df_all_output.to_csv(all_sports_ev, index=False)
+    except PermissionError:
+        all_sports_ev = "data/v3/extracts/AllSports_EV_new.csv"
+        df_all_output.to_csv(all_sports_ev, index=False)
+        print(f"[WARN]  Combined EV locked, saved to: {all_sports_ev}")
+    else:
+        print(f"[OK] All-sports EV CSV saved: {all_sports_ev}")
+    print(f"   Combined columns: {len(df_all_output.columns)}")
+    print(f"   Combined rows: {len(df_all_output):,}\n")
     
     # Print column summary
     print("[STATS] Column Breakdown:")

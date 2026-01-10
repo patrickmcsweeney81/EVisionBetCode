@@ -161,6 +161,17 @@ def detect_nba_outliers():
     
     final_cols = core_cols + outlier_cols + bookmaker_cols
     df_output = df_outliers[final_cols].copy()
+
+    # Add sport and build combined all-sports outlier file
+    df_output['sport'] = 'basketball_nba'
+    normalized_cols = [
+        'sport', 'event_id', 'extracted_at', 'commence_time', 'league', 'event_name',
+        'market_type', 'point', 'selection', 'player_name',
+        'num_outliers', 'outlier_books', 'median_odds', 'outlier_details'
+    ]
+    normalized_cols = [c for c in normalized_cols if c in df_output.columns]
+    normalized_cols_with_books = normalized_cols + [col for col in bookmaker_cols if col in df_output.columns]
+    df_all = df_output[normalized_cols_with_books].copy()
     
     # Save output
     os.makedirs("data/v3/extracts", exist_ok=True)
@@ -173,6 +184,17 @@ def detect_nba_outliers():
         print(f"⚠️  Main file locked by backend, saved to: {output_csv}")
     else:
         print(f"✅ Outlier CSV saved: {output_csv}")
+
+    combined_csv = "data/v3/extracts/AllSports_Outliers.csv"
+    try:
+        df_all.to_csv(combined_csv, index=False)
+    except PermissionError:
+        combined_csv = "data/v3/extracts/AllSports_Outliers_new.csv"
+        df_all.to_csv(combined_csv, index=False)
+        print(f"⚠️  Combined outliers locked, saved to: {combined_csv}")
+    else:
+        print(f"✅ All-sports Outlier CSV saved: {combined_csv}")
+
     print(f"   Columns: {len(df_output.columns)}")
     print(f"   Rows: {len(df_output):,}\n")
     

@@ -65,8 +65,31 @@ def get_data_dir():
 
 
 DATA_DIR = get_data_dir()
-EV_CSV = DATA_DIR / "ev_hits.csv"
+EV_CSV_CANDIDATES = [
+    DATA_DIR / "v3" / "extracts" / "AllSports_EV.csv",
+    DATA_DIR / "v3" / "extracts" / "NBA_EV.csv",
+    DATA_DIR / "ev_hits.csv",
+]
+OUTLIER_CSV_CANDIDATES = [
+    DATA_DIR / "v3" / "extracts" / "AllSports_Outliers.csv",
+    DATA_DIR / "v3" / "extracts" / "NBA_Outliers.csv",
+]
 RAW_CSV = DATA_DIR / "raw_odds_pure.csv"
+
+
+def _first_existing(paths):
+    for p in paths:
+        if p.exists():
+            return p
+    return paths[0]
+
+
+def get_ev_csv():
+    return _first_existing(EV_CSV_CANDIDATES)
+
+
+def get_outlier_csv():
+    return _first_existing(OUTLIER_CSV_CANDIDATES)
 
 # ============================================================================
 # ADMIN CREDENTIALS (from env or hardcoded for simplicity)
@@ -388,34 +411,39 @@ async def health_check():
     }
     
     # Check if CSV files exist and get their last modified times
-    if EV_CSV.exists():
-        ev_mtime = datetime.fromtimestamp(EV_CSV.stat().st_mtime)
+    ev_csv_path = get_ev_csv()
+    if ev_csv_path.exists():
+        ev_mtime = datetime.fromtimestamp(ev_csv_path.stat().st_mtime)
         health_data["pipelines"]["calculate_ev"] = {
             "status": "healthy",
             "last_run": ev_mtime.isoformat(),
-            "age_seconds": (datetime.now() - ev_mtime).total_seconds()
+            "age_seconds": (datetime.now() - ev_mtime).total_seconds(),
+            "path": str(ev_csv_path),
         }
     else:
         health_data["pipelines"]["calculate_ev"] = {
             "status": "missing",
             "last_run": None,
-            "age_seconds": None
+            "age_seconds": None,
+            "path": str(ev_csv_path),
         }
-    
+
     if RAW_CSV.exists():
         raw_mtime = datetime.fromtimestamp(RAW_CSV.stat().st_mtime)
         health_data["pipelines"]["extract_odds"] = {
             "status": "healthy",
             "last_run": raw_mtime.isoformat(),
-            "age_seconds": (datetime.now() - raw_mtime).total_seconds()
+            "age_seconds": (datetime.now() - raw_mtime).total_seconds(),
+            "path": str(RAW_CSV),
         }
     else:
         health_data["pipelines"]["extract_odds"] = {
             "status": "missing",
             "last_run": None,
-            "age_seconds": None
+            "age_seconds": None,
+            "path": str(RAW_CSV),
         }
-    
+
     return health_data
 
 
@@ -447,8 +475,9 @@ async def get_ev_hits(
     """
 
     def csv_fallback():
-        # Read from ev_hits.csv when database is unavailable or empty
-        if not EV_CSV.exists():
+        # Read from EV CSV when database is unavailable or empty
+        ev_csv_path = get_ev_csv()
+        if not ev_csv_path.exists():
             return [], 0
 
         def first(row, keys):
@@ -498,7 +527,8 @@ async def get_ev_hits(
                 return None
 
         rows = []
-        with EV_CSV.open("r", encoding="utf-8", newline="") as f:
+        ev_csv_path = get_ev_csv()
+        with ev_csv_path.open("r", encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 try:
@@ -668,7 +698,8 @@ async def get_ev_summary():
     """Get summary stats about EV opportunities"""
     try:
         if not SessionLocal:
-            if not EV_CSV.exists():
+            ev_csv_path = get_ev_csv()
+            if not ev_csv_path.exists():
                 return {
                     "available": False,
                     "total_hits": 0,
@@ -678,7 +709,7 @@ async def get_ev_summary():
                 }
 
             rows = []
-            with EV_CSV.open("r", encoding="utf-8", newline="") as f:
+            with ev_csv_path.open("r", encoding="utf-8", newline="") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     try:
@@ -772,6 +803,48 @@ async def get_ev_summary():
             "sports": {},
             "last_updated": datetime.utcnow().isoformat(),
         }
+
+
+# ============================================================================
+# OUTLIER ENDPOINTS (CSV fallback)
+# ============================================================================
+
+
+@app.get("/api/outliers")
+async def get_outliers(
+    limit: int = Query(500, ge=1, le=5000),
+    sport: Optional[str] = Query(None),
+):
+    """Serve combined outliers CSV (AllSports_Outliers or fallback)."""
+    outlier_csv = get_outlier_csv()
+    if not outlier_csv.exists():
+        return {
+            "rows": [],
+            "count": 0,
+            "last_updated": datetime.utcnow().isoformat(),
+            "source": str(outlier_csv),
+            "error": "outlier_csv_not_found",
+        }
+
+    rows = []
+    with outlier_csv.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                if sport and row.get("sport") and row.get("sport") != sport:
+                    continue
+                rows.append(row)
+            except Exception:
+                continue
+
+    last_updated = datetime.fromtimestamp(outlier_csv.stat().st_mtime).isoformat()
+    rows = rows[:limit]
+    return {
+        "rows": rows,
+        "count": len(rows),
+        "last_updated": last_updated,
+        "source": str(outlier_csv),
+    }
 
 
 # ============================================================================

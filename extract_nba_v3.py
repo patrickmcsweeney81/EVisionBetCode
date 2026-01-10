@@ -378,12 +378,12 @@ class NBAExtractorV3:
         """Fetch odds for single event using bookmakers parameter for cost optimization."""
         url = f"{API_HOST}/v4/sports/{self.sport}/events/{event_id}/odds"
         
-        # Core NBA markets (main game only, no period breakdowns)
-        all_markets = (
-            # Main full-game markets (8)
+        # Core NBA markets (essential for EV analysis)
+        core_markets = (
+            # Main full-game markets (5)
             "h2h,spreads,totals,alternate_spreads,alternate_totals,"
             "player_points,player_assists,player_rebounds,"
-            # Player props - main (8)
+            # Player props - main (7)
             "player_blocks,player_steals,player_threes,player_double_double,"
             "player_triple_double,player_turnovers,"
             "player_blocks_alternate,player_steals_alternate,"
@@ -395,16 +395,23 @@ class NBAExtractorV3:
             "player_points_rebounds_assists,"
             "player_points_assists_alternate,player_points_rebounds_alternate,"
             "player_rebounds_assists_alternate,player_points_rebounds_assists_alternate,"
-            # Niche full-game markets (1)
+            # Special markets (2)
+            "h2h_lay"
+        )
+        
+        # Optional markets (enable via INCLUDE_OPTIONAL_MARKETS=true in .env)
+        # Saves ~20 credits/event (~15% API cost reduction) when disabled
+        optional_markets = (
             "odd_even,"
-            # Other special markets (3)
             "player_first_basket,player_first_team_basket,player_method_of_first_basket,"
             "first_team_to_score,last_team_to_score,"
-            # Rare props (5)
             "player_twos,player_twos_alternate,player_twos_attempts,player_threes_attempts_alternate,"
-            # Draw/Exchange (2)
-            "draw_no_bet_h1,h2h_lay"
+            "draw_no_bet_h1"
         )
+        
+        # Combine markets based on environment setting
+        include_optional = os.getenv("INCLUDE_OPTIONAL_MARKETS", "false").lower() == "true"
+        all_markets = core_markets + ("," + optional_markets if include_optional else "")
         
         params = {
             "apiKey": self.api_key,

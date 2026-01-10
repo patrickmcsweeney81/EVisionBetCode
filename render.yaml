@@ -64,5 +64,7 @@ services:
 databases:
   - name: evisionbet-db
     databaseName: evisionbet
-    plan: free
+    plan: starter  # Basic-256mb plan ($6/month)
     region: oregon
+    # Note: 'starter' = Basic-256mb on Render (256 MB RAM, 0.1 CPU)
+    # Upgrade to 'standard' for Basic-1gb if needed later

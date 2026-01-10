@@ -565,7 +565,8 @@ async def get_ev_hits(
                             "event_id": first(row, ["event_id", "Event ID"]) or None,
                             "away_team": away_team_val,
                             "home_team": home_team_val,
-                            "commence_time": None,  # CSV has invalid format; skip for now
+                            # CSV has invalid format; skip for now
+                            "commence_time": None,
                             "market": first(row, ["market", "Market"]) or None,
                             "point": line_val,
                             "selection": first(row, ["selection", "Selection"]) or None,
@@ -578,7 +579,7 @@ async def get_ev_hits(
                             "implied_prob": prob_val,
                             "stake": stake_val,
                             "kelly_fraction": (
-                                parse_float(first(row, ["kelly_fraction"])) 
+                                parse_float(first(row, ["kelly_fraction"]))
                                 or None
                             ),
                             "detected_at": first(row, ["detected_at"]) or None,
@@ -593,7 +594,7 @@ async def get_ev_hits(
         # Sort by ev_percent desc and apply offset/limit
         rows = sorted(rows, key=lambda r: r.get("ev_percent", 0), reverse=True)
         total = len(rows)
-        rows = rows[offset : offset + limit]
+        rows = rows[offset: offset + limit]
         return rows, total
 
     try:
@@ -840,7 +841,8 @@ async def get_outliers(
             except Exception:
                 continue
 
-    last_updated = datetime.fromtimestamp(outlier_csv.stat().st_mtime).isoformat()
+    mtime = outlier_csv.stat().st_mtime
+    last_updated = datetime.fromtimestamp(mtime).isoformat()
     rows = rows[:limit]
     return {
         "rows": rows,

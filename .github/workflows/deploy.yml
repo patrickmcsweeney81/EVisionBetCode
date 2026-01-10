@@ -1,0 +1,25 @@
+name: Deploy to Render
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  notify-render:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Trigger Render Deploy
+      run: |
+        echo "✅ Pushed to main branch"
+        echo "Render will auto-deploy via webhook"
+        echo "Check: https://dashboard.render.com"
+    
+    # Optional: Add Render deploy hook if you want GitHub to trigger it
+    # - name: Trigger Render Deploy Hook
+    #   if: github.ref == 'refs/heads/main'
+    #   run: |
+    #     curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
+    #   env:
+    #     RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}

@@ -67,7 +67,7 @@ def run_pipeline(extract_enabled=False):
     if not failed_scripts:
         print(f"✅ All {len(scripts)} stages completed successfully!")
         print(f"📂 Latest files in data/v3/extracts/:")
-        subprocess.run(["powershell", "-Command", "Get-ChildItem C:\\EVisionBetCode\\data\\v3\\extracts\\ -Name | Sort-Object -Descending | Select-Object -First 4"])
+        subprocess.run(["powershell", "-Command", "Get-ChildItem C:\\EVisionWorkspace\\EVisionBetCode\\data\\v3\\extracts\\ -Name | Sort-Object -Descending | Select-Object -First 8"])
     else:
         print(f"❌ Pipeline failed at stage: {failed_scripts[0][0]}")
         print(f"   Script: {failed_scripts[0][1]}")

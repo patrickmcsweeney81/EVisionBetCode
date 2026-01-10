@@ -98,13 +98,22 @@ def detect_odds_outliers(row, sharp_books, au_books):
 def detect_nba_outliers():
     """Detect odds outliers in raw NBA data."""
     
-    # Load latest raw NBA CSV
-    csv_files = sorted(glob.glob("data/v3/extracts/basketball_nba_raw_*.csv"))
-    if not csv_files:
+    # Load latest raw NBA CSV (prefer _new then main)
+    candidates = [
+        "data/v3/extracts/NBA_Raw_new.csv",
+        "data/v3/extracts/NBA_Raw.csv",
+        "data/v3/extracts/basketball_nba_raw.csv",
+    ]
+    latest_csv = next((c for c in candidates if os.path.exists(c)), None)
+    if not latest_csv:
+        legacy = sorted(glob.glob("data/v3/extracts/basketball_nba_raw_*.csv"))
+        if legacy:
+            latest_csv = legacy[-1]
+    if not latest_csv:
         print("❌ No raw NBA CSV found. Run extract_nba_v3.py first.")
         return
     
-    latest_csv = csv_files[-1]
+    print(f"📂 Loading raw NBA CSV: {latest_csv}")
     print(f"📂 Loading raw NBA CSV: {latest_csv}")
     
     df = pd.read_csv(latest_csv)
@@ -155,11 +164,15 @@ def detect_nba_outliers():
     
     # Save output
     os.makedirs("data/v3/extracts", exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_csv = f"data/v3/extracts/basketball_nba_outliers_{timestamp}.csv"
-    df_output.to_csv(output_csv, index=False)
-    
-    print(f"✅ Outlier CSV saved: {output_csv}")
+    output_csv = "data/v3/extracts/NBA_Outliers.csv"
+    try:
+        df_output.to_csv(output_csv, index=False)
+    except PermissionError:
+        output_csv = "data/v3/extracts/NBA_Outliers_new.csv"
+        df_output.to_csv(output_csv, index=False)
+        print(f"⚠️  Main file locked by backend, saved to: {output_csv}")
+    else:
+        print(f"✅ Outlier CSV saved: {output_csv}")
     print(f"   Columns: {len(df_output.columns)}")
     print(f"   Rows: {len(df_output):,}\n")
     

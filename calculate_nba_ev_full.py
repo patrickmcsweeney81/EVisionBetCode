@@ -711,15 +711,21 @@ def calculate_ev(fair_decimal, au_decimal):
 def calculate_nba_ev_full():
     """Calculate EV for filtered NBA data with de-vigging, keep all columns."""
     
-    # Load filtered CSV (prefer _new.csv if it exists for fresh extraction)
-    csv_files = sorted(glob.glob("data/v3/extracts/basketball_nba_filtered*.csv"))
-    if not csv_files:
+    # Load filtered CSV (prefer NBA_Filtered_new then NBA_Filtered)
+    candidates = [
+        "data/v3/extracts/NBA_Filtered_new.csv",
+        "data/v3/extracts/NBA_Filtered.csv",
+        "data/v3/extracts/basketball_nba_filtered_20260110_111608.csv",
+        "data/v3/extracts/basketball_nba_filtered_20260110_060308.csv",
+    ]
+    filtered_csv = next((c for c in candidates if os.path.exists(c)), None)
+    if not filtered_csv:
+        legacy = sorted(glob.glob("data/v3/extracts/basketball_nba_filtered*.csv"))
+        if legacy:
+            filtered_csv = legacy[-1]
+    if not filtered_csv:
         print("[ERROR] No filtered NBA CSV found. Run filter_nba_v3.py first.")
         return
-    
-    # Prioritize _new.csv (fresh filter, main file might be locked by backend)
-    csv_new = [f for f in csv_files if f.endswith("_new.csv")]
-    filtered_csv = csv_new[-1] if csv_new else csv_files[-1]
     
     print(f"[*] Loading filtered CSV: {filtered_csv}")
     
@@ -817,12 +823,12 @@ def calculate_nba_ev_full():
     
     # Save FULL version (all columns, reordered) - overwrites previous file (fallback if locked)
     os.makedirs("data/v3/extracts", exist_ok=True)
-    output_csv_full = "data/v3/extracts/basketball_nba_ev_full.csv"
+    output_csv_full = "data/v3/extracts/NBA_EV.csv"
     try:
         df_output.to_csv(output_csv_full, index=False)
     except PermissionError:
         # File locked by backend API, save to alternate
-        alt_csv_full = "data/v3/extracts/basketball_nba_ev_full_new.csv"
+        alt_csv_full = "data/v3/extracts/NBA_EV_new.csv"
         df_output.to_csv(alt_csv_full, index=False)
         print(f"[WARN]  Main file locked by backend, saved to: {alt_csv_full}")
         output_csv_full = alt_csv_full

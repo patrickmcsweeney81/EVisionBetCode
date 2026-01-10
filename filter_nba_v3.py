@@ -7,7 +7,7 @@ Usage:
     python filter_nba_v3.py
 
 Output:
-    data/v3/extracts/basketball_nba_filtered_*.csv
+    data/v3/extracts/NBA_Filtered.csv (or NBA_Filtered_new.csv if locked)
 """
 
 import pandas as pd
@@ -55,15 +55,21 @@ def get_opposite_selection(market_type, selection):
 def filter_nba_data():
     """Load latest NBA_Raw CSV and create NBA_Filtered CSV with filters applied."""
     
-    # Get latest NBA_Raw CSV
-    csv_files = sorted(glob.glob("data/v3/extracts/basketball_nba_raw*.csv"))
-    if not csv_files:
+    # Get latest NBA_Raw CSV (prefer _new, fallback to main)
+    candidates = [
+        "data/v3/extracts/NBA_Raw_new.csv",
+        "data/v3/extracts/NBA_Raw.csv",
+        "data/v3/extracts/basketball_nba_raw.csv",
+    ]
+    # Legacy timestamped raw files as last resort
+    if not any(os.path.exists(c) for c in candidates):
+        legacy = sorted(glob.glob("data/v3/extracts/basketball_nba_raw_*.csv"))
+        if legacy:
+            candidates.append(legacy[-1])
+    latest_raw_csv = next((c for c in candidates if os.path.exists(c)), None)
+    if not latest_raw_csv:
         print("[ERROR] No NBA_Raw CSV files found in data/v3/extracts/")
         return
-    
-    # Prioritize _new.csv (fresh extraction, main file might be locked by backend)
-    csv_new = [f for f in csv_files if f.endswith("_new.csv")]
-    latest_raw_csv = csv_new[-1] if csv_new else csv_files[-1]
     print(f"[*] Loading NBA_Raw: {latest_raw_csv}")
     
     df = pd.read_csv(latest_raw_csv)
@@ -166,27 +172,35 @@ def filter_nba_data():
         pair_counter = 0
         
         # SPECIAL HANDLING FOR SPREADS: Group by (event, market, |point|)
-        # Spreads have opposite signs: Boston -10.5 and Toronto +10.5 are the same line
-        # Key insight: |-10.5| = |10.5| = 10.5, so they group together
+        # Spreads should produce exactly two usable rows: favorite (-abs_point) vs underdog (+abs_point)
+        # Some books emit both teams with both signs; we must pick one + and one - with different selections.
         if 'spreads' in df_full['market_type'].values:
             spreads_df = df_full[df_full['market_type'] == 'spreads'].copy()
             spreads_df['abs_point'] = spreads_df['point'].abs()
             
-            # Group by (event, market, absolute point value) only
             for (event, market, abs_point), group_indices in spreads_df.groupby(['event_name', 'market_type', 'abs_point'], dropna=False).groups.items():
                 group = spreads_df.loc[group_indices].copy()
+                rows_neg = group[group['point'] < 0]
+                rows_pos = group[group['point'] > 0]
                 
-                # Get unique selections (should be exactly 2 teams)
-                selections = group['selection'].unique()
+                # Need at least one negative and one positive row with different selections
+                if rows_neg.empty or rows_pos.empty:
+                    continue
                 
-                # Assign same pair_id to all rows in this group (they're all the same line, different signs)
-                if len(selections) >= 2:
-                    # Both teams have the same |point| → same line
-                    df_full.loc[group_indices, 'pair_id'] = pair_counter
-                    pair_counter += 1
-                elif len(selections) == 1:
-                    # Single selection - orphaned line, can't pair
-                    pass
+                paired = False
+                # Pick first negative row whose selection differs from a positive row
+                for _, neg_row in rows_neg.iterrows():
+                    pos_match = rows_pos[rows_pos['selection'] != neg_row['selection']]
+                    if not pos_match.empty:
+                        pos_row = pos_match.iloc[0]
+                        df_full.loc[neg_row.name, 'pair_id'] = pair_counter
+                        df_full.loc[pos_row.name, 'pair_id'] = pair_counter
+                        pair_counter += 1
+                        paired = True
+                        break
+                if not paired:
+                    # Could not find opposite team; leave unpaired
+                    continue
         
         # NORMAL HANDLING FOR OTHER MARKETS: Group by exact point value
         # For player props: same player, same point → Over/Under pair
@@ -272,12 +286,15 @@ def filter_nba_data():
     # Save output
     os.makedirs("data/v3/extracts", exist_ok=True)
     
-    # Use timestamped filename to avoid backend lock issues
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_csv = f"data/v3/extracts/basketball_nba_filtered_{timestamp}.csv"
-    
-    df.to_csv(output_csv, index=False)
-    print(f"[OK] NBA_Filtered CSV saved: {output_csv}")
+    output_csv = "data/v3/extracts/NBA_Filtered.csv"
+    try:
+        df.to_csv(output_csv, index=False)
+    except PermissionError:
+        output_csv = "data/v3/extracts/NBA_Filtered_new.csv"
+        df.to_csv(output_csv, index=False)
+        print(f"[WARN] Main NBA_Filtered locked; saved to {output_csv}")
+    else:
+        print(f"[OK] NBA_Filtered CSV saved: {output_csv}")
     
     print(f"   Final rows: {len(df):,}")
     print(f"\nMarket breakdown:")

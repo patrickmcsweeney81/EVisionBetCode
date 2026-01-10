@@ -462,7 +462,7 @@ class NBAExtractorV3:
             return None
         
         if filename is None:
-            filename = "basketball_nba_raw.csv"
+            filename = "NBA_Raw.csv"
         
         output_path = DATA_DIR / filename
         

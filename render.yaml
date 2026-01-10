@@ -30,6 +30,8 @@ services:
         sync: false
       - key: ADMIN_EMAIL_SECRET
         sync: false
+      - key: AUTO_SEED_ON_START
+        value: "true"
       - key: PYTHON_VERSION
         value: "3.9.18"
 
@@ -42,7 +44,7 @@ services:
     branch: main
     schedule: "*/30 * * * *"  # Every 30 minutes
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    startCommand: python extract_nba_v3.py
+    startCommand: python run_nba_pipeline.py --extract
     envVars:
       # REQUIRED: Get from https://the-odds-api.com/
       - key: ODDS_API_KEY

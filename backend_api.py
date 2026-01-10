@@ -5,6 +5,8 @@ Runs on Render as a Web Service (not cron job)
 """
 
 import csv
+import subprocess
+import threading
 import hashlib
 import os
 from datetime import datetime
@@ -400,6 +402,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _run_pipeline_background(with_extract: bool = False):
+    """Run the pipeline in a background thread to seed CSVs on first boot."""
+    def _target():
+        try:
+            cmd = ["python", "run_nba_pipeline.py"]
+            if with_extract:
+                cmd.append("--extract")
+            subprocess.run(cmd, check=True)
+        except Exception as e:  # noqa: BLE001 - best-effort seeding
+            print(f"[startup] pipeline run failed: {e}")
+
+    t = threading.Thread(target=_target, daemon=True)
+    t.start()
+
+
+@app.on_event("startup")
+def startup_seed_if_missing():
+    # Auto-seed once on startup if EV CSV missing and allowed
+    auto_seed = os.getenv("AUTO_SEED_ON_START", "true").lower() in {"1", "true", "yes"}
+    if not auto_seed:
+        return
+    ev_path = get_ev_csv()
+    if ev_path.exists():
+        return
+    # If ODDS_API_KEY present, run with extract to fetch fresh data; otherwise try calc-only
+    with_extract = bool(os.getenv("ODDS_API_KEY"))
+    print(f"[startup] Seeding pipeline (with_extract={with_extract})...")
+    _run_pipeline_background(with_extract=with_extract)
 
 
 @app.get("/health")

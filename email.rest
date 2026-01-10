@@ -1,0 +1,21 @@
+### Send test email (local)
+POST http://localhost:8000/api/email/send
+Content-Type: application/json
+X-Admin-Secret: {{ADMIN_EMAIL_SECRET}}
+
+{
+  "to": "you@example.com",
+  "subject": "EVisionBet test email",
+  "text": "This is a test email from EVisionBet backend"
+}
+
+### Send test email (Render)
+POST https://evision-api.onrender.com/api/email/send
+Content-Type: application/json
+X-Admin-Secret: {{ADMIN_EMAIL_SECRET}}
+
+{
+  "to": "you@example.com",
+  "subject": "EVisionBet test email",
+  "text": "This is a test email from EVisionBet backend (Render)"
+}

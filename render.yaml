@@ -21,6 +21,15 @@ services:
       # Generate with: python -c "import hashlib; print(hashlib.sha256('yourpassword'.encode()).hexdigest())"
       - key: ADMIN_PASSWORD_HASH
         sync: false
+      # Email configuration (optional but recommended)
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: EMAIL_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: ADMIN_EMAIL_SECRET
+        sync: false
       - key: PYTHON_VERSION
         value: "3.9.18"
 

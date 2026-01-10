@@ -27,6 +27,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from pydantic import BaseModel, EmailStr, Field
+import email_service as email_srv
 
 # Load environment variables
 load_dotenv()
@@ -456,6 +458,42 @@ async def root_endpoint():  # Renamed from 'root' to avoid redefinition
 # ============================================================================
 # EV HITS ENDPOINTS
 # ============================================================================
+
+# Email send models and endpoint
+class EmailRequest(BaseModel):
+    to: EmailStr
+    subject: str = Field(min_length=1, max_length=200)
+    html: Optional[str] = None
+    text: Optional[str] = None
+
+
+@app.post("/api/email/send")
+async def send_email_endpoint(
+    req: EmailRequest,
+    x_admin_secret: Optional[str] = Header(None),
+):
+    """Send an email via configured provider (Resend by default).
+
+    Security: requires `X-Admin-Secret` header to match `ADMIN_EMAIL_SECRET` env var.
+    """
+    admin_secret = os.getenv("ADMIN_EMAIL_SECRET")
+    if not admin_secret:
+        raise HTTPException(status_code=503, detail="Email not configured: ADMIN_EMAIL_SECRET missing")
+    if x_admin_secret != admin_secret:
+        raise HTTPException(status_code=401, detail="Unauthorized - invalid admin secret")
+
+    try:
+        result = email_srv.send_email(
+            to_email=str(req.to),
+            subject=req.subject,
+            html=req.html,
+            text=req.text,
+        )
+        provider = os.getenv("EMAIL_PROVIDER", "resend")
+        message_id = result.get("id") if isinstance(result, dict) else None
+        return {"ok": True, "provider": provider, "id": message_id}
+    except Exception as e:  # noqa: BLE001 - return clean error to client
+        raise HTTPException(status_code=500, detail=f"Email send failed: {e}")
 
 
 @app.get("/api/ev/hits")

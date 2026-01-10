@@ -6,7 +6,7 @@ services:
     region: oregon
     plan: free
     branch: main
-    buildCommand: pip install --upgrade pip && pip install -e .
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: uvicorn backend_api:app --host 0.0.0.0 --port $PORT
     envVars:
       # REQUIRED: Get from https://the-odds-api.com/
@@ -32,8 +32,8 @@ services:
     plan: free
     branch: main
     schedule: "*/30 * * * *"  # Every 30 minutes
-    buildCommand: pip install --upgrade pip && pip install -e .
-    startCommand: cd /opt/render/project/src && python -m pipeline_v2.extract_odds
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: python extract_nba_v3.py
     envVars:
       # REQUIRED: Get from https://the-odds-api.com/
       - key: ODDS_API_KEY
@@ -52,8 +52,8 @@ services:
     plan: free
     branch: main
     schedule: "5,35 * * * *"  # 5 min after extract (every :05 and :35)
-    buildCommand: pip install --upgrade pip && pip install -e .
-    startCommand: cd /opt/render/project/src && python -m pipeline_v2.calculate_opportunities
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: python run_nba_pipeline.py
     envVars:
       # REQUIRED: Auto-populated from evisionbet-db database below
       - key: DATABASE_URL

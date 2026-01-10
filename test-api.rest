@@ -1,0 +1,100 @@
+### EVisionBet API Test Suite
+### Use VS Code REST Client extension to test all endpoints
+### Click "Send Request" above each request to execute
+
+@baseUrl = http://localhost:8000
+@limit = 20
+@sport = basketball_nba
+
+### ============================================================================
+### HEALTH & STATUS
+### ============================================================================
+
+### Health Check
+GET {{baseUrl}}/health
+
+### Root Endpoint
+GET {{baseUrl}}/
+
+### ============================================================================
+### EV OPPORTUNITIES (Main Endpoint)
+### ============================================================================
+
+### Get All EV Hits (Default - All Sports, Top 50)
+GET {{baseUrl}}/api/ev/hits
+
+### Get EV Hits with Limit
+GET {{baseUrl}}/api/ev/hits?limit={{limit}}
+
+### Get EV Hits for Specific Sport
+GET {{baseUrl}}/api/ev/hits?sport={{sport}}&limit={{limit}}
+
+### Get EV Hits with Minimum EV Threshold
+GET {{baseUrl}}/api/ev/hits?min_ev=0.05&limit={{limit}}
+
+### Get EV Hits with Pagination
+GET {{baseUrl}}/api/ev/hits?limit=10&offset=0
+
+### Get EV Hits - Combined (All Sports)
+GET {{baseUrl}}/api/ev/hits?limit={{limit}}&offset=0
+
+### ============================================================================
+### OUTLIERS (New Endpoint)
+### ============================================================================
+
+### Get All Outliers
+GET {{baseUrl}}/api/outliers
+
+### Get Outliers for Sport
+GET {{baseUrl}}/api/outliers?sport={{sport}}&limit={{limit}}
+
+### Get Outliers with Limit
+GET {{baseUrl}}/api/outliers?limit={{limit}}
+
+### ============================================================================
+### SUMMARY STATISTICS
+### ============================================================================
+
+### Get EV Summary Stats
+GET {{baseUrl}}/api/ev/summary
+
+### ============================================================================
+### RAW ODDS (For Debugging)
+### ============================================================================
+
+### Get Latest Odds
+GET {{baseUrl}}/api/odds/latest?limit={{limit}}
+
+### Get Latest Odds for Sport
+GET {{baseUrl}}/api/odds/latest?sport={{sport}}&limit={{limit}}
+
+### Get Raw Odds
+GET {{baseUrl}}/api/odds/raw?limit=100&offset=0
+
+### ============================================================================
+### ADMIN ENDPOINTS (Auth Required)
+### ============================================================================
+
+### Admin Login (Get Token)
+POST {{baseUrl}}/api/admin/auth?password=admin123
+
+### Download EV Opportunities CSV (Requires Token)
+GET {{baseUrl}}/api/admin/ev-opportunities-csv
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### Download Raw Odds CSV (Requires Token)
+GET {{baseUrl}}/api/admin/raw-odds-csv
+Authorization: Bearer YOUR_TOKEN_HERE
+
+### Get Database Stats
+GET {{baseUrl}}/api/admin/database-stats
+
+### ============================================================================
+### NOTES
+### ============================================================================
+### 1. Make sure backend is running: uvicorn backend_api:app --reload
+### 2. Make sure frontend is running: npm start
+### 3. Use @baseUrl, @limit, @sport variables at top to customize requests
+### 4. Click "Send Request" link above each request to execute
+### 5. Response shown in right panel
+### 6. For admin endpoints, first call login endpoint to get token

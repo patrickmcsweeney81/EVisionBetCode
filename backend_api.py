@@ -565,7 +565,7 @@ async def get_ev_hits(
                             "event_id": first(row, ["event_id", "Event ID"]) or None,
                             "away_team": away_team_val,
                             "home_team": home_team_val,
-                            "commence_time": first(row, ["commence_time", "Start Time"]) or None,
+                            "commence_time": None,  # CSV has invalid format; skip for now
                             "market": first(row, ["market", "Market"]) or None,
                             "point": line_val,
                             "selection": first(row, ["selection", "Selection"]) or None,
@@ -577,7 +577,10 @@ async def get_ev_hits(
                             "sharp_book_count": int(sharps_val or 0),
                             "implied_prob": prob_val,
                             "stake": stake_val,
-                            "kelly_fraction": parse_float(first(row, ["kelly_fraction"])) or None,
+                            "kelly_fraction": (
+                                parse_float(first(row, ["kelly_fraction"])) 
+                                or None
+                            ),
                             "detected_at": first(row, ["detected_at"]) or None,
                             "created_at": first(row, ["created_at"]) or None,
                             # Aliases for frontend convenience

@@ -21,7 +21,8 @@ Output:
 import pandas as pd
 import glob
 import os
-from datetime import datetime
+import sys
+import subprocess
 import numpy as np
 
 # Bookmaker groupings for fair odds calculation
@@ -36,7 +37,14 @@ SOFT_BOOKS_2STAR = ['hardrockbet', 'williamhill_us', 'bovada', 'espnbet']  # Sof
 SOFT_BOOKS_1STAR = ['coolbet', 'fliff']  # Mentioned in data but low volume
 
 # ALL books for fair odds (weighted by sharpness)
-FAIR_ODDS_BOOKS = SHARP_BOOKS_4STAR + SHARP_BOOKS_3STAR + SOFT_BOOKS_2STAR + SOFT_BOOKS_1STAR  # 20 books total
+FAIR_ODDS_BOOKS = SHARP_BOOKS_4STAR + SHARP_BOOKS_3STAR + SOFT_BOOKS_2STAR + SOFT_BOOKS_1STAR
+
+# AU books for EV opportunities (0⭐)
+AU_BOOKS = ['bet365', 'betfair_ex_au', 'sportsbet', 'dabble_au',
+            'pointsbetau', 'neds', 'ladbrokes_au', 'unibet', 'betright',
+            'betr_au', 'boombet', 'playup', 'tab', 'tabtouch']
+
+# Book weights for fair odds calculation
 BOOK_WEIGHTS = {}
 for book in SHARP_BOOKS_4STAR:
     BOOK_WEIGHTS[book] = 1.5
@@ -46,11 +54,8 @@ for book in SOFT_BOOKS_2STAR:
     BOOK_WEIGHTS[book] = 0.75
 for book in SOFT_BOOKS_1STAR:
     BOOK_WEIGHTS[book] = 0.5
-
-# AU books for EV opportunities (0⭐)
-AU_BOOKS = ['bet365', 'betfair_ex_au', 'sportsbet', 'dabble_au', 'pointsbetau', 
-            'neds', 'ladbrokes_au', 'unibet', 'betright', 'betr_au', 'boombet', 
-            'playup', 'tab', 'tabtouch']
+for book in AU_BOOKS:
+    BOOK_WEIGHTS[book] = 0  # Exclude 0⭐ AU books from fair odds
 
 # 2-way markets for de-vigging
 TWO_WAY_MARKETS = {
@@ -711,6 +716,26 @@ def calculate_ev(fair_decimal, au_decimal):
 def calculate_nba_ev_full():
     """Calculate EV for filtered NBA data with de-vigging, keep all columns."""
     
+    print("[INIT] EV Calculation Pipeline for NBA")
+    print()
+
+    # Manage AllSports_EV: archive previous runs, cleanup old files
+    print("[MANAGE] Archiving previous runs and cleaning up old files...")
+    try:
+        result = subprocess.run(
+            [sys.executable, "manage_allsports_ev.py"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        if result.stdout:
+            print(result.stdout)
+        if result.returncode != 0:
+            print(f"[WARN] Management script error: {result.stderr}")
+    except Exception as e:
+        print(f"[WARN] Could not run management script: {e}")
+    print()
+    
     # Load filtered CSV (prefer NBA_Filtered_new then NBA_Filtered)
     candidates = [
         "data/v3/extracts/NBA_Filtered_new.csv",
@@ -759,7 +784,8 @@ def calculate_nba_ev_full():
         if (idx + 1) % 2000 == 0:
             print(f"  ... processed {idx + 1:,} / {len(df):,} rows")
     
-    df['fair_odds_decimal'] = fair_odds_list
+    # Round fair odds to 2 decimals (standard for betting)
+    df['fair_odds_decimal'] = [round(x, 2) for x in fair_odds_list]
     df['uses_devig'] = uses_devig_list
     
     df['best_au_odds_decimal'] = df.apply(calculate_best_au_odds, axis=1)
@@ -790,35 +816,25 @@ def calculate_nba_ev_full():
     valid_evs = df['ev_percent'].notna().sum()
     print(f"[OK] Calculated EV for {valid_evs:,} rows\n")
     
-    # Format output columns for readability
-    df['Best book odds'] = df['best_au_odds_decimal'].apply(
-        lambda x: f"${x:.2f}" if pd.notna(x) else "N/A"
-    )
-    # Round fair odds to 2 decimals
-    df['Fair odds'] = df['fair_odds_decimal'].apply(
-        lambda x: round(x, 2) if pd.notna(x) else np.nan
-    )
-    # Format EV as percentage
-    df['EV'] = df['ev_percent'].apply(
-        lambda x: f"{x:.2f}%" if pd.notna(x) else "N/A"
-    )
-    
-    # Reorder columns: id → core → best AU book info → fair odds → all bookmakers
     # Add auto-incrementing id as first column
     df['id'] = range(1, len(df) + 1)
     
-    core_cols = ['id', 'event_id', 'extracted_at', 'commence_time', 'league', 'event_name', 
-                 'market_type', 'point', 'selection', 'player_name', 'pair_id']
+    core_cols = [
+        'id', 'event_id', 'extracted_at', 'commence_time', 'league',
+        'event_name', 'market_type', 'point', 'selection', 'player_name',
+        'pair_id'
+    ]
     
     # Only include bookmaker columns that actually exist in the input
     bookmaker_cols = [col for col in BOOKMAKERS_IN_CSV if col in df.columns]
     
-    # Build final column order with formatted display columns + de-vig flag (no numeric ev_percent)
-    final_cols = (core_cols + 
-                  ['best_au_bookmaker', 'Best book odds',
-                   'EV', 'Fair odds',
-                   'total_books', 'uses_devig'] + 
-                  bookmaker_cols)
+    # Best AU book info + fair odds + EV + book stats
+    final_cols = (
+        core_cols +
+        ['best_au_bookmaker', 'best_au_odds_decimal', 'ev_percent',
+         'fair_odds_decimal', 'total_books', 'uses_devig'] +
+        bookmaker_cols
+    )
     df_output = df[final_cols].copy()
     
     # Save FULL version (all columns, reordered) - overwrites previous file (fallback if locked)
@@ -837,43 +853,56 @@ def calculate_nba_ev_full():
     print(f"   Columns: {len(df_output.columns)}")
     print(f"   Rows: {len(df):,}\n")
 
-    # Build normalized all-sports EV CSV (backend/frontend friendly headers)
+    # Build all-sports EV CSV (keep consistent column names)
     df_all = df.copy()
     df_all['sport'] = 'basketball_nba'
-    df_all['best_book'] = df_all['best_au_bookmaker']
-    df_all['best_odds'] = df_all['best_au_odds_decimal']
-    df_all['fair_odds'] = df_all['fair_odds_decimal']
 
-    normalized_cols = [
-        'sport', 'event_id', 'extracted_at', 'commence_time', 'league', 'event_name',
-        'market_type', 'point', 'selection', 'player_name', 'pair_id',
-        'best_book', 'best_odds', 'ev_percent', 'fair_odds',
+    ordered_cols = [
+        'sport', 'event_id', 'extracted_at', 'commence_time',
+        'league', 'event_name', 'market_type', 'point', 'selection',
+        'player_name', 'pair_id', 'best_au_bookmaker',
+        'best_au_odds_decimal', 'ev_percent', 'fair_odds_decimal',
         'total_books', 'uses_devig'
     ]
-    normalized_cols = [c for c in normalized_cols if c in df_all.columns]
-    normalized_cols_with_books = normalized_cols + bookmaker_cols
-    df_all_output = df_all[normalized_cols_with_books].copy()
+    ordered_cols = [c for c in ordered_cols if c in df_all.columns]
+    ordered_cols_with_books = ordered_cols + bookmaker_cols
+    df_all_output = df_all[ordered_cols_with_books].copy()
 
     os.makedirs("data/v3/extracts", exist_ok=True)
     all_sports_ev = "data/v3/extracts/AllSports_EV.csv"
+    nba_ev = "data/v3/extracts/NBA_EV.csv"
+    
+    # Save NBA EV
     try:
-        df_all_output.to_csv(all_sports_ev, index=False)
+        df_all_output.to_csv(nba_ev, index=False)
+        print(f"[OK] NBA_EV.csv saved: {len(df_all_output):,} rows")
     except PermissionError:
-        all_sports_ev = "data/v3/extracts/AllSports_EV_new.csv"
-        df_all_output.to_csv(all_sports_ev, index=False)
-        print(f"[WARN]  Combined EV locked, saved to: {all_sports_ev}")
-    else:
-        print(f"[OK] All-sports EV CSV saved: {all_sports_ev}")
+        print("[WARN] NBA_EV.csv locked, skipping")
+    
+    # Merge all *_EV.csv files into AllSports_EV.csv
+    ev_files = sorted(glob.glob("data/v3/extracts/*_EV.csv"))
+    if ev_files:
+        dfs = []
+        for f in ev_files:
+            try:
+                df = pd.read_csv(f)
+                dfs.append(df)
+            except Exception:
+                pass
+        if dfs:
+            combined = pd.concat(dfs, ignore_index=True)
+            combined.to_csv(all_sports_ev, index=False)
+            print(f"[OK] AllSports_EV merged: {len(combined):,} rows "
+                  f"({combined['sport'].nunique()} sports)")
     print(f"   Combined columns: {len(df_all_output.columns)}")
     print(f"   Combined rows: {len(df_all_output):,}\n")
     
     # Print column summary
     print("[STATS] Column Breakdown:")
-    print(f"   Core metadata: 9")
-    print(f"   Best AU book info: 2 (best_au_bookmaker, Best book odds [$])")
-    print(f"   Market info: 2 (Fair odds, EV [%])")
-    print(f"   Book stats: 1 (total_books)")
-    print(f"   De-vig flag: 1 (uses_devig)")
+    print("   Core metadata: 11")
+    print("   Best AU book: 1 (best_au_bookmaker)")
+    print("   Metrics: 3 (best_au_odds_decimal, ev_percent, fair_odds_decimal)")
+    print("   Stats: 2 (total_books, uses_devig)")
     print(f"   Bookmakers: {len(bookmaker_cols)}")
     print(f"   Total columns: {len(df_output.columns)}")
     

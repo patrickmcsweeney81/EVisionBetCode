@@ -64,6 +64,9 @@ def generate_pats_picks():
     df = df[df['fair_odds_decimal'] < 2.5].copy()
     print(f"   After fair odds filter: {len(df):,}")
     
+    # Round EV to 2 decimal places
+    df['ev_percent'] = df['ev_percent'].round(2)
+    
     # Add Kelly column as Excel formula (will calculate dynamically)
     # Kelly formula: K = ((best_odds / fair_odds) - 1) / (best_odds - 1)
     # For $1000 bankroll: bet_size = 1000 * K

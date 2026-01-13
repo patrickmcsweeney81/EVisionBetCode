@@ -37,7 +37,14 @@ SOFT_BOOKS_2STAR = ['hardrockbet', 'williamhill_us', 'bovada', 'espnbet']  # Sof
 SOFT_BOOKS_1STAR = ['coolbet', 'fliff']  # Mentioned in data but low volume
 
 # ALL books for fair odds (weighted by sharpness)
-FAIR_ODDS_BOOKS = SHARP_BOOKS_4STAR + SHARP_BOOKS_3STAR + SOFT_BOOKS_2STAR + SOFT_BOOKS_1STAR  # 20 books total
+FAIR_ODDS_BOOKS = SHARP_BOOKS_4STAR + SHARP_BOOKS_3STAR + SOFT_BOOKS_2STAR + SOFT_BOOKS_1STAR
+
+# AU books for EV opportunities (0⭐)
+AU_BOOKS = ['bet365', 'betfair_ex_au', 'sportsbet', 'dabble_au',
+            'pointsbetau', 'neds', 'ladbrokes_au', 'unibet', 'betright',
+            'betr_au', 'boombet', 'playup', 'tab', 'tabtouch']
+
+# Book weights for fair odds calculation
 BOOK_WEIGHTS = {}
 for book in SHARP_BOOKS_4STAR:
     BOOK_WEIGHTS[book] = 1.5
@@ -47,11 +54,8 @@ for book in SOFT_BOOKS_2STAR:
     BOOK_WEIGHTS[book] = 0.75
 for book in SOFT_BOOKS_1STAR:
     BOOK_WEIGHTS[book] = 0.5
-
-# AU books for EV opportunities (0⭐)
-AU_BOOKS = ['bet365', 'betfair_ex_au', 'sportsbet', 'dabble_au', 'pointsbetau', 
-            'neds', 'ladbrokes_au', 'unibet', 'betright', 'betr_au', 'boombet', 
-            'playup', 'tab', 'tabtouch']
+for book in AU_BOOKS:
+    BOOK_WEIGHTS[book] = 0  # Exclude 0⭐ AU books from fair odds
 
 # 2-way markets for de-vigging
 TWO_WAY_MARKETS = {

@@ -153,7 +153,7 @@ class NFLExtractorV3:
     def __init__(self):
         self.api_key = API_KEY
         self.sport = "americanfootball_nfl"
-        self.timestamp = datetime.now(timezone.utc).isoformat()
+        self.timestamp = datetime.now().isoformat()
         self.credit_start = None
         self.credit_end = None
 

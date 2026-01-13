@@ -167,7 +167,7 @@ class NBAExtractorV3:
     def __init__(self):
         self.api_key = API_KEY
         self.sport = "basketball_nba"
-        self.timestamp = datetime.now(timezone.utc).isoformat()
+        self.timestamp = datetime.now().isoformat()
         self.credit_start = None
         self.credit_end = None
         self.credit_used = 0

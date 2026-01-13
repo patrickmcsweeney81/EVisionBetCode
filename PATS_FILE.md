@@ -36,25 +36,34 @@
 
 ---
 
-## 📍 CURRENT STATUS (January 10, 2026 - Multi-Sport Pipeline Complete)
+## 📍 CURRENT STATUS (January 13, 2026 - Local Timestamps + Pats Picks)
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **NBA Extraction** | ✅ Production | `extract_nba_v3.py` → Raw odds, 12 events |
-| **NFL Extraction** | ✅ Production | `extract_nfl_v3.py` → Raw odds, 8 events |
-| **NBA Filtering** | ✅ Production | `filter_nba_v3.py` → Composite Key pairing, 728 pairs |
-| **NFL Filtering** | ✅ Production | `filter_nfl_v3.py` → Composite Key pairing, 461 pairs |
-| **Composite Key Algorithm** | ✅ NEW | Groups by (event, market_type, point, player_name) |
-| **Strict Spreads Validator** | ✅ NEW | +x/-x enforcement, multi-sport support |
+| **NBA Extraction** | ✅ Production | `extract_nba_v3.py` → Raw odds, local timestamps |
+| **NFL Extraction** | ✅ Production | `extract_nfl_v3.py` → Raw odds, local timestamps |
+| **NBA Filtering** | ✅ Production | `filter_nba_v3.py` → Composite Key pairing |
+| **NFL Filtering** | ✅ Production | `filter_nfl_v3.py` → Composite Key pairing |
+| **Composite Key Algorithm** | ✅ Production | Groups by (event, market_type, point, player_name) |
+| **Strict Spreads Validator** | ✅ Production | +x/-x enforcement, multi-sport support |
 | **Outlier Detection** | ✅ Production | MAD-based filtering (NBA + NFL) |
 | **EV Calculation** | ✅ Production | De-vigging, fair odds, 47-column output |
 | **Pipeline Orchestrator** | ✅ Production | `orchestrate_pipeline.py` → Parallel execution, audit |
+| **Pats Picks Generator** | ✅ NEW | `generate_pats_picks.py` → Custom filtered CSV with Kelly |
 | **Backend API** | ✅ Ready | FastAPI on :8000, CORS enabled, reads latest CSV |
 | **Frontend** | ✅ Ready | React 19 + TypeScript on :3000 |
-| **Git Repos** | ✅ Clean | main branch, all changes pushed to GitHub |
-| **Documentation** | ✅ Updated | PAIRING_IMPLEMENTATION_SUMMARY.md added |
+| **Git Repos** | ✅ Clean | main branch, ready to commit |
+| **Documentation** | ✅ Updated | PATS_FILE.md updated with latest features |
 
-**Just Completed (Jan 10, Latest - Commit 7707182):**
+**Just Completed (Jan 13, Latest):**
+- ✅ Changed timestamps from UTC to local time (AWST UTC+8)
+- ✅ Created `generate_pats_picks.py` for custom filtered output
+- ✅ Pats_Picks.csv filters: +EV only, fair odds < 2.5
+- ✅ Kelly column with Excel formula (auto-updates, rounded to $5)
+- ✅ Removed columns: sport, event_id, extracted_at, pair_id
+- ✅ Formula: `=MROUND(MAX(0, 1000 * ((I#/K#) - 1) / (I# - 1)), 5)`
+
+**Previous Completion (Jan 10):**
 - ✅ Multi-sport pairing validator (NBA + NFL)
 - ✅ Strict spreads +x/-x validator (7-point validation)
 - ✅ All checks passing: NBA 728 pairs, NFL 461 pairs

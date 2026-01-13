@@ -22,6 +22,7 @@ TWO_WAY_MARKETS = {
     'totals': {'Over': 'Under', 'Under': 'Over'},
     'spreads': 'pair_with_other_team',
     'h2h': 'pair_with_other_team',
+    'h2h_lay': 'pair_with_other_team',
     'player_rebounds': {'Over': 'Under', 'Under': 'Over'},
     'player_rebounds_assists': {'Over': 'Under', 'Under': 'Over'},
     'player_points': {'Over': 'Under', 'Under': 'Over'},
@@ -130,16 +131,26 @@ def filter_nba_data():
     df['market_type'] = df['market_type'].map(lambda x: market_normalization.get(x, x))
     print(f"[OK] After normalizing market names: {len(df):,} rows")
     
-    # FILTER 2: Remove whole number spreads/totals (keep only .5 lines)
+    # FILTER 2: Split whole number vs half-point spreads/totals
+    # Whole numbers → Push_Vig_markets.csv (separate output)
+    # Half-points (.5) → continue to main filtered output
     spread_total_rows = df[~df['market_type'].isin(['spreads', 'totals', 'team_totals'])]
     
     spreads_totals = df[df['market_type'].isin(['spreads', 'totals', 'team_totals'])].copy()
     spreads_totals['is_half'] = spreads_totals['point'].fillna(0) % 1 != 0
-    spreads_totals = spreads_totals[spreads_totals['is_half']]
-    spreads_totals = spreads_totals.drop('is_half', axis=1)
+    
+    # Save whole number markets to separate CSV
+    whole_numbers = spreads_totals[~spreads_totals['is_half']].drop('is_half', axis=1)
+    if not whole_numbers.empty:
+        push_vig_csv = "data/v3/extracts/Push_Vig_markets.csv"
+        whole_numbers.to_csv(push_vig_csv, index=False)
+        print(f"[INFO] Saved {len(whole_numbers):,} whole number lines to: {push_vig_csv}")
+    
+    # Keep only half-point lines for main output
+    spreads_totals = spreads_totals[spreads_totals['is_half']].drop('is_half', axis=1)
     
     df = pd.concat([spread_total_rows, spreads_totals], ignore_index=True)
-    print(f"[OK] After removing whole number spreads/totals: {len(df):,} rows")
+    print(f"[OK] After splitting whole/half spreads/totals: {len(df):,} rows (half-point only)")
     
     # FILTER 3: Keep only lines with at least one sharp book
     sharp_books = ['pinnacle', 'betfair_ex_eu', 'matchbook', 'draftkings', 'fanduel', 'lowvig']
@@ -158,6 +169,29 @@ def filter_nba_data():
     df = df[df['has_au_book']]
     df = df.drop('has_au_book', axis=1)
     print(f"[OK] After keeping only lines with AU books: {len(df):,} rows")
+    
+    # FILTER 4B: Split lines by 4-star sharp book count
+    # Lines with <2 4-star sharps → Push_Vig_markets.csv (harder to de-vig)
+    # Lines with >=2 4-star sharps → Main filtered output
+    four_star_books = ['pinnacle', 'betfair_ex_eu', 'matchbook', 'draftkings',
+                       'fanduel', 'lowvig']
+    df['sharp_count'] = df[four_star_books].notna().sum(axis=1)
+    
+    # Save lines with <2 sharps to Push_Vig
+    push_vig_low_sharps = df[df['sharp_count'] < 2].drop('sharp_count', axis=1)
+    if not push_vig_low_sharps.empty:
+        push_vig_csv = "data/v3/extracts/Push_Vig_markets.csv"
+        try:
+            push_vig_low_sharps.to_csv(push_vig_csv, index=False)
+        except PermissionError:
+            push_vig_csv = "data/v3/extracts/Push_Vig_markets_new.csv"
+            push_vig_low_sharps.to_csv(push_vig_csv, index=False)
+        msg = f"[INFO] Saved {len(push_vig_low_sharps):,} lines with <2 sharps"
+        print(f"{msg} to: {push_vig_csv}")
+    
+    # Keep only lines with >=2 4-star sharps for main output
+    df = df[df['sharp_count'] >= 2].drop('sharp_count', axis=1)
+    print(f"[OK] After filtering for >=2 4-star sharps: {len(df):,} rows")
     
     # FILTER 5: Remove duplicate bets
     df = df.drop_duplicates(subset=['event_name', 'market_type', 'selection', 'point', 'player_name'], keep='first')
@@ -283,22 +317,50 @@ def filter_nba_data():
         total_pairs = len(paired_df) // 2 if df[df['market_type'] != 'spreads']['pair_id'].notna().sum() > 0 else "multiple"
         print(f"[OK] All pairs valid (2 rows for player props, 4+ rows for spreads)")
     
+    # FILTER: Count 4-star sharp books for de-vigging requirement
+    four_star_books = [
+        'pinnacle', 'betfair_ex_eu', 'matchbook', 'draftkings', 
+        'fanduel', 'lowvig'
+    ]
+    df['sharp_book_count'] = df[four_star_books].notna().sum(axis=1)
+    
+    # Split: Paired + >=2 4-star sharps → main filtered
+    # Unpaired OR <2 4-star sharps → Push_Vig
+    main_df = df[(df['pair_id'].notna()) & (df['sharp_book_count'] >= 2)]
+    vig_df = df[(df['pair_id'].isna()) | (df['sharp_book_count'] < 2)]
+    
     # Save output
     os.makedirs("data/v3/extracts", exist_ok=True)
     
+    # Save Push_Vig lines (unpaired or <2 sharps)
+    if not vig_df.empty:
+        vig_csv = "data/v3/extracts/Push_Vig_markets.csv"
+        try:
+            vig_df_out = vig_df.drop('sharp_book_count', axis=1)
+            vig_df_out.to_csv(vig_csv, index=False)
+            print(
+                f"[INFO] Saved {len(vig_df):,} unpaired/low-sharp lines "
+                f"to: {vig_csv}"
+            )
+        except PermissionError:
+            vig_csv = "data/v3/extracts/Push_Vig_markets_new.csv"
+            vig_df.drop('sharp_book_count', axis=1).to_csv(vig_csv, index=False)
+            print(f"[WARN] Push_Vig locked; saved to {vig_csv}")
+    
     output_csv = "data/v3/extracts/NBA_Filtered.csv"
+    main_df_out = main_df.drop('sharp_book_count', axis=1)
     try:
-        df.to_csv(output_csv, index=False)
+        main_df_out.to_csv(output_csv, index=False)
     except PermissionError:
         output_csv = "data/v3/extracts/NBA_Filtered_new.csv"
-        df.to_csv(output_csv, index=False)
+        main_df_out.to_csv(output_csv, index=False)
         print(f"[WARN] Main NBA_Filtered locked; saved to {output_csv}")
     else:
         print(f"[OK] NBA_Filtered CSV saved: {output_csv}")
     
-    print(f"   Final rows: {len(df):,}")
+    print(f"   Final rows: {len(main_df):,}")
     print(f"\nMarket breakdown:")
-    print(df['market_type'].value_counts())
+    print(main_df['market_type'].value_counts())
     
     return output_csv
 

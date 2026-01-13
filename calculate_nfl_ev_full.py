@@ -78,6 +78,7 @@ TWO_WAY_MARKETS = {
     'player_pass_attempts': {'Over': 'Under', 'Under': 'Over'},
     'player_rush_yds': {'Over': 'Under', 'Under': 'Over'},
     'player_rush_attempts': {'Over': 'Under', 'Under': 'Over'},
+    'player_rush_longest': {'Over': 'Under', 'Under': 'Over'},
     'player_receptions': {'Over': 'Under', 'Under': 'Over'},
     'player_receiving_yds': {'Over': 'Under', 'Under': 'Over'},
     'player_td_anytime': {'Yes': 'No', 'No': 'Yes'},
@@ -738,13 +739,17 @@ def calculate_nfl_ev_full():
         if (idx + 1) % 2000 == 0:
             print(f"  ... processed {idx + 1:,} / {len(df):,} rows")
     
-    df['fair_odds_decimal'] = fair_odds_list
+    # Round fair odds to 2 decimals (standard for betting)
+    df['fair_odds_decimal'] = [round(x, 2) for x in fair_odds_list]
     df['uses_devig'] = uses_devig_list
     
     df['best_au_odds_decimal'] = df.apply(calculate_best_au_odds, axis=1)
     df['best_au_bookmaker'] = df.apply(get_best_au_bookmaker, axis=1)
     df['ev_percent'] = df.apply(lambda row: calculate_ev(row['fair_odds_decimal'], 
                                                           row['best_au_odds_decimal']), axis=1)
+    
+    # Round ev_percent to 2 decimals
+    df['ev_percent'] = df['ev_percent'].round(2)
     
     # Define bookmaker columns BEFORE adding any calculated columns
     # Same order as extract_nfl_v3.py ALL_BOOKMAKERS list
@@ -769,46 +774,39 @@ def calculate_nfl_ev_full():
     valid_evs = df['ev_percent'].notna().sum()
     print(f"[OK] Calculated EV for {valid_evs:,} rows\n")
     
-    # Format output columns for readability
-    df['Best book odds'] = df['best_au_odds_decimal'].apply(
-        lambda x: f"${x:.2f}" if pd.notna(x) else "N/A"
-    )
-    # Round fair odds to 2 decimals
-    df['Fair odds'] = df['fair_odds_decimal'].apply(
-        lambda x: round(x, 2) if pd.notna(x) else np.nan
-    )
-    # Format EV as percentage
-    df['EV'] = df['ev_percent'].apply(
-        lambda x: f"{x:.2f}%" if pd.notna(x) else "N/A"
-    )
-    
-    # Reorder columns: id → core → best AU book info → fair odds → all bookmakers
     # Add auto-incrementing id as first column
     df['id'] = range(1, len(df) + 1)
     
-    core_cols = ['id', 'event_id', 'extracted_at', 'commence_time', 'league', 'event_name', 
-                 'market_type', 'point', 'selection', 'player_name', 'pair_id']
+    core_cols = [
+        'id', 'event_id', 'extracted_at', 'commence_time', 'league',
+        'event_name', 'market_type', 'point', 'selection', 'player_name',
+        'pair_id'
+    ]
     
     # Only include bookmaker columns that actually exist in the input
     bookmaker_cols = [col for col in BOOKMAKERS_IN_CSV if col in df.columns]
     
-    # Build final column order with formatted display columns + de-vig flag (no numeric ev_percent)
-    final_cols = (core_cols + 
-                  ['best_au_bookmaker', 'Best book odds',
-                   'EV', 'Fair odds',
-                   'total_books', 'uses_devig'] + 
-                  bookmaker_cols)
+    # Best AU book info + fair odds + EV + book stats
+    final_cols = (
+        core_cols +
+        ['best_au_bookmaker', 'best_au_odds_decimal', 'ev_percent',
+         'fair_odds_decimal', 'total_books', 'uses_devig'] +
+        bookmaker_cols
+    )
     df_output = df[final_cols].copy()
     
     # Save FULL version (all columns, reordered) - overwrites previous file (fallback if locked)
     os.makedirs("data/v3/extracts", exist_ok=True)
     output_csv_full = "data/v3/extracts/NFL_EV.csv"
     try:
-        df_output.to_csv(output_csv_full, index=False)
+        # Use float_format to ensure 2 decimal places for all floats
+        df_output.to_csv(output_csv_full, index=False,
+                        float_format=lambda x: f"{x:.2f}")
     except PermissionError:
         # File locked by backend API, save to alternate
         alt_csv_full = "data/v3/extracts/NFL_EV_new.csv"
-        df_output.to_csv(alt_csv_full, index=False)
+        df_output.to_csv(alt_csv_full, index=False,
+                        float_format=lambda x: f"{x:.2f}")
         print(f"[WARN]  Main file locked by backend, saved to: {alt_csv_full}")
         output_csv_full = alt_csv_full
     
@@ -816,22 +814,20 @@ def calculate_nfl_ev_full():
     print(f"   Columns: {len(df_output.columns)}")
     print(f"   Rows: {len(df):,}\n")
 
-    # Build normalized all-sports EV CSV (backend/frontend friendly headers)
+    # Build all-sports EV CSV (keep consistent column names)
     df_all = df.copy()
     df_all['sport'] = 'americanfootball_nfl'
-    df_all['best_book'] = df_all['best_au_bookmaker']
-    df_all['best_odds'] = df_all['best_au_odds_decimal']
-    df_all['fair_odds'] = df_all['fair_odds_decimal']
 
-    normalized_cols = [
-        'sport', 'event_id', 'extracted_at', 'commence_time', 'league', 'event_name',
-        'market_type', 'point', 'selection', 'player_name', 'pair_id',
-        'best_book', 'best_odds', 'ev_percent', 'fair_odds',
+    ordered_cols = [
+        'sport', 'event_id', 'extracted_at', 'commence_time',
+        'league', 'event_name', 'market_type', 'point', 'selection',
+        'player_name', 'pair_id', 'best_au_bookmaker',
+        'best_au_odds_decimal', 'ev_percent', 'fair_odds_decimal',
         'total_books', 'uses_devig'
     ]
-    normalized_cols = [c for c in normalized_cols if c in df_all.columns]
-    normalized_cols_with_books = normalized_cols + bookmaker_cols
-    df_all_output = df_all[normalized_cols_with_books].copy()
+    ordered_cols = [c for c in ordered_cols if c in df_all.columns]
+    ordered_cols_with_books = ordered_cols + bookmaker_cols
+    df_all_output = df_all[ordered_cols_with_books].copy()
 
     os.makedirs("data/v3/extracts", exist_ok=True)
     all_sports_ev = "data/v3/extracts/AllSports_EV.csv"
@@ -842,7 +838,7 @@ def calculate_nfl_ev_full():
         df_all_output.to_csv(nfl_ev, index=False)
         print(f"[OK] NFL_EV.csv saved: {len(df_all_output):,} rows")
     except PermissionError:
-        print(f"[WARN] NFL_EV.csv locked, skipping")
+        print("[WARN] NFL_EV.csv locked, skipping")
     
     # Merge all *_EV.csv files into AllSports_EV.csv
     ev_files = sorted(glob.glob("data/v3/extracts/*_EV.csv"))
@@ -864,11 +860,10 @@ def calculate_nfl_ev_full():
     
     # Print column summary
     print("[STATS] Column Breakdown:")
-    print(f"   Core metadata: 9")
-    print(f"   Best AU book info: 2 (best_au_bookmaker, Best book odds [$])")
-    print(f"   Market info: 2 (Fair odds, EV [%])")
-    print(f"   Book stats: 1 (total_books)")
-    print(f"   De-vig flag: 1 (uses_devig)")
+    print("   Core metadata: 11")
+    print("   Best AU book: 1 (best_au_bookmaker)")
+    print("   Metrics: 3 (best_au_odds_decimal, ev_percent, fair_odds_decimal)")
+    print("   Stats: 2 (total_books, uses_devig)")
     print(f"   Bookmakers: {len(bookmaker_cols)}")
     print(f"   Total columns: {len(df_output.columns)}")
     

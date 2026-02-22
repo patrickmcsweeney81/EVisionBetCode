@@ -26,6 +26,7 @@ def run_pipeline(extract_enabled=False):
         ("Filter", "filter_nba_v3.py"),
         ("Detect Outliers", "outlier_nba_v3.py"),
         ("Calculate EV", "calculate_nba_ev_full.py"),
+        ("Pats Picks", "generate_pats_picks.py"),
     ])
     
     print("=" * 80)

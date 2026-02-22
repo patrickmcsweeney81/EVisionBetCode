@@ -16,9 +16,15 @@ Usage:
 """
 
 import os
+import sys
 import pandas as pd
 import glob
 from datetime import datetime
+
+
+# Windows console can default to cp1252 and crash on unicode (e.g. ⚠️ / ✓)
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 try:
     from tabulate import tabulate

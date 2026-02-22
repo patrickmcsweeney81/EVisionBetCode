@@ -5,10 +5,11 @@ Runs on Render as a Web Service (not cron job)
 """
 
 import csv
-import subprocess
-import threading
 import hashlib
 import os
+import subprocess
+import sys
+import threading
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
@@ -18,18 +19,11 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from sqlalchemy import (
-    Column,
-    DateTime,
-    Boolean,
-    Float,
-    Integer,
-    String,
-    create_engine,
-)
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from pydantic import BaseModel, EmailStr, Field
+
 import email_service as email_srv
 
 # Load environment variables
@@ -74,6 +68,9 @@ EV_CSV_CANDIDATES = [
     DATA_DIR / "v3" / "extracts" / "NBA_EV.csv",
     DATA_DIR / "ev_hits.csv",
 ]
+PATS_PICKS_CSV_CANDIDATES = [
+    DATA_DIR / "v3" / "extracts" / "Pats_Picks.csv",
+]
 OUTLIER_CSV_CANDIDATES = [
     DATA_DIR / "v3" / "extracts" / "AllSports_Outliers.csv",
     DATA_DIR / "v3" / "extracts" / "NBA_Outliers.csv",
@@ -89,11 +86,52 @@ def _first_existing(paths):
 
 
 def get_ev_csv():
+    """Return the EV CSV path to serve.
+
+    Important: Prefer the current run output (AllSports_EV.csv) and its lock
+    fallback (AllSports_EV_new.csv). The dated archive files (AllSports_EV_*.csv)
+    are intentionally append-only history and can contain older rows.
+    """
+
+    extracts_dir = DATA_DIR / "v3" / "extracts"
+
+    preferred = [
+        extracts_dir / "AllSports_EV.csv",
+        extracts_dir / "AllSports_EV_new.csv",
+    ]
+    for p in preferred:
+        try:
+            if p.exists() and p.stat().st_size > 0:
+                return p
+        except Exception:
+            continue
+
+    # Fallback: newest AllSports_EV*.csv (usually history/archives)
+    try:
+        candidates = [p for p in extracts_dir.glob("AllSports_EV*.csv") if p.exists()]
+        if candidates:
+            return max(candidates, key=lambda p: p.stat().st_mtime)
+    except Exception:
+        pass
+
     return _first_existing(EV_CSV_CANDIDATES)
 
 
 def get_outlier_csv():
     return _first_existing(OUTLIER_CSV_CANDIDATES)
+
+
+def get_pats_picks_csv():
+    extracts_dir = DATA_DIR / "v3" / "extracts"
+    try:
+        candidates = list(extracts_dir.glob("Pats_Picks*.csv"))
+        candidates = [p for p in candidates if p.exists()]
+        if candidates:
+            return max(candidates, key=lambda p: p.stat().st_mtime)
+    except Exception:
+        pass
+
+    return _first_existing(PATS_PICKS_CSV_CANDIDATES)
 
 # ============================================================================
 # ADMIN CREDENTIALS (from env or hardcoded for simplicity)
@@ -103,6 +141,53 @@ ADMIN_PASSWORD_HASH = os.getenv(
     "ADMIN_PASSWORD_HASH",
     hashlib.sha256("admin123".encode()).hexdigest(),  # Default: hashed "admin123"
 )
+
+
+# Simple in-memory pipeline status (local/dev use)
+pipeline_status = {
+    "running": False,
+    "started_at": None,
+    "finished_at": None,
+    "exit_code": None,
+    "error": None,
+    "output_tail": "",
+    "args": [],
+}
+pipeline_lock = threading.Lock()
+
+
+def _run_pipeline_task(args):
+    """Run the full multi-sport pipeline in a background thread."""
+    repo_dir = Path(__file__).resolve().parent
+    with pipeline_lock:
+        pipeline_status["running"] = True
+        pipeline_status["started_at"] = datetime.utcnow().isoformat()
+        pipeline_status["finished_at"] = None
+        pipeline_status["exit_code"] = None
+        pipeline_status["error"] = None
+        pipeline_status["output_tail"] = ""
+        pipeline_status["args"] = list(args)
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "orchestrate_pipeline.py", *args],
+            capture_output=True,
+            text=True,
+            cwd=str(repo_dir),
+        )
+        combined = (result.stdout or "")
+        if result.stderr:
+            combined += "\n" + result.stderr
+        with pipeline_lock:
+            pipeline_status["exit_code"] = result.returncode
+            pipeline_status["output_tail"] = combined[-5000:]
+    except Exception as exc:
+        with pipeline_lock:
+            pipeline_status["error"] = str(exc)
+    finally:
+        with pipeline_lock:
+            pipeline_status["running"] = False
+            pipeline_status["finished_at"] = datetime.utcnow().isoformat()
 
 
 def verify_admin_password(password: str) -> bool:
@@ -393,11 +478,14 @@ origins = [
     "http://127.0.0.1:8000",  # Backend self via IP
     "https://evisionbet.com",
     "https://www.evisionbet.com",
+    "https://evision.com",
+    "https://www.evision.com",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https://.*\.netlify\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -406,12 +494,13 @@ app.add_middleware(
 
 def _run_pipeline_background(with_extract: bool = False):
     """Run the pipeline in a background thread to seed CSVs on first boot."""
+    repo_dir = Path(__file__).resolve().parent
     def _target():
         try:
             cmd = ["python", "run_nba_pipeline.py"]
             if with_extract:
                 cmd.append("--extract")
-            subprocess.run(cmd, check=True)
+            subprocess.run(cmd, check=True, cwd=str(repo_dir))
         except Exception as e:  # noqa: BLE001 - best-effort seeding
             print(f"[startup] pipeline run failed: {e}")
 
@@ -880,6 +969,91 @@ async def get_ev_summary():
 
 
 # ============================================================================
+# PATS PICKS ENDPOINTS (CSV)
+# ============================================================================
+
+
+@app.get("/api/pats-picks")
+async def get_pats_picks(
+    limit: int = Query(200, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+    bankroll: float = Query(1000.0, gt=0),
+):
+    """Serve Pats_Picks.csv (generated by generate_pats_picks.py)."""
+
+    def parse_float(val: Any) -> Optional[float]:
+        if val is None:
+            return None
+        if isinstance(val, (int, float)):
+            return float(val)
+        s = str(val).strip()
+        if s == "":
+            return None
+        s = s.replace("$", "").replace("%", "")
+        try:
+            return float(s)
+        except Exception:
+            return None
+
+    def mround_positive(value: float, multiple: float) -> float:
+        if value <= 0:
+            return 0.0
+        # Round-to-nearest-multiple for positive values
+        return multiple * int((value + (multiple / 2.0)) // multiple)
+
+    def calc_kelly_amount(best_odds: Optional[float], fair_odds: Optional[float]) -> Optional[float]:
+        if not best_odds or not fair_odds:
+            return None
+        if best_odds <= 1.0 or fair_odds <= 1.0:
+            return None
+        fair_prob = 1.0 / fair_odds
+        net_odds = best_odds - 1.0
+        if net_odds <= 0:
+            return None
+        kelly_fraction = ((best_odds * fair_prob) - 1.0) / net_odds
+        amount = max(0.0, bankroll * kelly_fraction)
+        return mround_positive(amount, 5.0)
+
+    csv_path = get_pats_picks_csv()
+    if not csv_path.exists():
+        return {
+            "rows": [],
+            "count": 0,
+            "total_count": 0,
+            "last_updated": datetime.utcnow().isoformat(),
+            "source": str(csv_path),
+            "error": "pats_picks_csv_not_found",
+        }
+
+    all_rows = []
+    with csv_path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                best_odds = parse_float(row.get("best_au_odds_decimal") or row.get("best_odds") or row.get("Odds"))
+                fair_odds = parse_float(row.get("fair_odds_decimal") or row.get("fair_odds") or row.get("Fair"))
+                kelly_calc = calc_kelly_amount(best_odds, fair_odds)
+                # Preserve original kelly_1000 (often an Excel formula) and add a numeric calc for the UI
+                row_out = dict(row)
+                row_out["kelly_1000_calc"] = kelly_calc
+                all_rows.append(row_out)
+            except Exception:
+                continue
+
+    total_count = len(all_rows)
+    rows = all_rows[offset: offset + limit]
+    mtime = csv_path.stat().st_mtime
+    return {
+        "rows": rows,
+        "count": len(rows),
+        "total_count": total_count,
+        "last_updated": datetime.fromtimestamp(mtime).isoformat(),
+        "source": str(csv_path),
+        "bankroll": bankroll,
+    }
+
+
+# ============================================================================
 # OUTLIER ENDPOINTS (CSV fallback)
 # ============================================================================
 
@@ -1110,6 +1284,59 @@ async def admin_auth(password: str = Query(...)):
         return {"authenticated": True, "token": token, "expires_in": 3600}  # 1 hour
     else:
         raise HTTPException(status_code=401, detail="Invalid password")
+
+
+@app.get("/api/admin/run-pipeline")
+@app.post("/api/admin/run-pipeline")
+async def run_pipeline(
+    password: str = Query(...),
+    extract_only: bool = Query(False),
+    calculate_only: bool = Query(False),
+    audit_only: bool = Query(False),
+):
+    """Start the full multi-sport pipeline in the background."""
+    if not verify_admin_password(password):
+        raise HTTPException(status_code=401, detail="Invalid password")
+
+    with pipeline_lock:
+        if pipeline_status.get("running"):
+            return {
+                "started": False,
+                "status": "running",
+                "message": "Pipeline already running",
+                "started_at": pipeline_status.get("started_at"),
+            }
+
+    args = []
+    if extract_only:
+        args.append("--extract-only")
+    if calculate_only:
+        args.append("--calculate-only")
+    if audit_only:
+        args.append("--audit-only")
+
+    thread = threading.Thread(
+        target=_run_pipeline_task,
+        args=(args,),
+        daemon=True,
+    )
+    thread.start()
+
+    return {
+        "started": True,
+        "status": "running",
+        "args": args,
+    }
+
+
+@app.get("/api/admin/pipeline-status")
+async def get_pipeline_status(password: str = Query(...)):
+    """Get the last pipeline run status."""
+    if not verify_admin_password(password):
+        raise HTTPException(status_code=401, detail="Invalid password")
+
+    with pipeline_lock:
+        return dict(pipeline_status)
 
 
 @app.get("/api/admin/ev-opportunities-csv")

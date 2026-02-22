@@ -836,21 +836,43 @@ def calculate_nfl_ev_full():
     os.makedirs("data/v3/extracts", exist_ok=True)
     all_sports_ev = "data/v3/extracts/AllSports_EV.csv"
     nfl_ev = "data/v3/extracts/NFL_EV.csv"
+    nfl_ev_fallback = "data/v3/extracts/NFL_EV_new.csv"
     
     # Save NFL EV
     try:
         df_all_output.to_csv(nfl_ev, index=False)
         print(f"[OK] NFL_EV.csv saved: {len(df_all_output):,} rows")
     except PermissionError:
-        print("[WARN] NFL_EV.csv locked, skipping")
+        df_all_output.to_csv(nfl_ev_fallback, index=False)
+        nfl_ev = nfl_ev_fallback
+        print(f"[WARN] NFL_EV.csv locked, saved to: {nfl_ev_fallback}")
     
     # Merge all *_EV.csv files into AllSports_EV.csv
-    ev_files = sorted(glob.glob("data/v3/extracts/*_EV.csv"))
+    ev_candidates = [
+        f
+        for f in glob.glob("data/v3/extracts/*_EV*.csv")
+        if not os.path.basename(f).startswith("AllSports_EV")
+    ]
+    ev_by_sport = {}
+    for f in ev_candidates:
+        sport_key = os.path.basename(f).split("_EV")[0]
+        if sport_key not in ev_by_sport or os.path.getmtime(f) > os.path.getmtime(
+            ev_by_sport[sport_key]
+        ):
+            ev_by_sport[sport_key] = f
+    ev_files = sorted(ev_by_sport.values())
     if ev_files:
         dfs = []
+        sport_map = {
+            "NBA": "basketball_nba",
+            "NFL": "americanfootball_nfl",
+        }
         for f in ev_files:
             try:
                 df = pd.read_csv(f)
+                if "sport" not in df.columns:
+                    sport_key = os.path.basename(f).split("_EV")[0]
+                    df["sport"] = sport_map.get(sport_key, sport_key.lower())
                 dfs.append(df)
             except Exception:
                 pass

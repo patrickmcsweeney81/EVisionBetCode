@@ -1,14 +1,16 @@
-"""
-V3 NFL EXTRACTOR - 30 Bookmakers (mirrors NBA V3 pattern)
-Outputs CSV with standardized columns for backend consumption.
-- Preserves every unique (market_type, selection, point) row (no consolidation)
-- Uses same 30-book cost-optimized set as NBA V3
-- Adds pair_id placeholder for downstream pairing
+"""V3 NRL EXTRACTOR - Standardized V3 Format
+
+- Sport key: rugbyleague_nrl
+- Uses the shared 30-bookmaker set (cost-optimized)
+- Outputs standardized columns for downstream filtering/EV
+
+Core markets requested:
+- h2h, spreads, totals, alternate_spreads, alternate_totals
 """
 
 import os
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List
 
@@ -18,11 +20,10 @@ from dotenv import load_dotenv
 
 from bookmaker_ratings import FINAL_COLUMN_ORDER
 
-# Fix Windows terminal encoding for emojis
+
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 
-# Load .env first
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
@@ -31,7 +32,6 @@ API_HOST = "https://api.the-odds-api.com"
 
 
 def get_data_dir() -> Path:
-    """Return data directory (created if missing)."""
     cwd = Path.cwd()
     data_dir = cwd / "data" / "v3" / "extracts"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -40,23 +40,17 @@ def get_data_dir() -> Path:
 
 DATA_DIR = get_data_dir()
 
-# ============================================================================
-# BOOKMAKER MAPPING - Convert API keys to standardized names
-# ============================================================================
 
 BOOKMAKER_MAPPING = {
-    # EU / Premium Sharp
     "pinnacle": "pinnacle",
     "betfair_ex_eu": "betfair_ex_eu",
     "betfair_ex_au": "betfair_ex_au",
     "matchbook": "matchbook",
-    # US - Mainstream
     "draftkings": "draftkings",
     "fanduel": "fanduel",
     "betmgm": "betmgm",
     "draftkings_uk": "draftkings",
     "fanduel_uk": "fanduel",
-    # US - Secondary
     "betonlineag": "betonlineag",
     "lowvig": "lowvig",
     "bovada": "bovada",
@@ -65,7 +59,6 @@ BOOKMAKER_MAPPING = {
     "betus": "betus",
     "everygame": "everygame",
     "gtbets": "gtbets",
-    # AU Specific
     "sportsbet": "sportsbet",
     "pointsbetau": "pointsbetau",
     "neds": "neds",
@@ -78,7 +71,6 @@ BOOKMAKER_MAPPING = {
     "ladbrokes_au": "ladbrokes_au",
     "playup": "playup",
     "bet365": "bet365",
-    # EU - Regional
     "unibet": "unibet",
     "unibet_fr": "unibet_fr",
     "unibet_nl": "unibet_nl",
@@ -93,14 +85,12 @@ BOOKMAKER_MAPPING = {
     "betrivers": "betrivers",
     "espnbet": "espnbet",
     "fanatics": "fanatics",
-    # EU - Specialized
     "betclic_fr": "betclic_fr",
     "parionssport_fr": "parionssport_fr",
     "winamax_fr": "winamax_fr",
     "winamax_de": "winamax_de",
     "tipico_de": "tipico_de",
     "codere_it": "codere_it",
-    # Other
     "betparx": "betparx",
     "rebet": "rebet",
     "coolbet": "coolbet",
@@ -110,16 +100,14 @@ BOOKMAKER_MAPPING = {
     "sport888": "sport888",
 }
 
-# Cost-optimized request list (30 books)
+
 REQUESTED_BOOKMAKERS = [
-    # 4⭐ SHARPS - Fair Odds Calculation
     "pinnacle",
     "betfair_ex_eu",
     "matchbook",
     "draftkings",
     "fanduel",
     "lowvig",
-    # 0⭐ AU TARGETS - EV Surface
     "bet365",
     "betfair_ex_au",
     "sportsbet",
@@ -134,43 +122,38 @@ REQUESTED_BOOKMAKERS = [
     "playup",
     "tab",
     "tabtouch",
-    # 3⭐ SHARPS - Sharp Coverage Depth
     "betonlineag",
     "betmgm",
     "betrivers",
     "fanatics",
-    # 2⭐ DECENT - Secondary Market Depth
     "hardrockbet",
     "williamhill_us",
     "bovada",
     "espnbet",
-    # 1⭐ SOFT - Specialized Books
     "coolbet",
     "fliff",
 ]
 
-# Output column order (LOCKED 54-book order + ensure requested books included)
-OUTPUT_BOOKMAKERS = list(dict.fromkeys(list(FINAL_COLUMN_ORDER) + list(REQUESTED_BOOKMAKERS)))
+OUTPUT_BOOKMAKERS = list(
+    dict.fromkeys(list(FINAL_COLUMN_ORDER) + list(REQUESTED_BOOKMAKERS))
+)
 
-# Backwards-compat alias (this file historically used ALL_BOOKMAKERS)
+# Backwards-compat alias
 ALL_BOOKMAKERS = REQUESTED_BOOKMAKERS
 
 
-class NFLExtractorV3:
-    """NFL Extractor - Standardized V3 Format"""
-
+class NRLExtractorV3:
     def __init__(self):
         self.api_key = API_KEY
-        self.sport = "americanfootball_nfl"
+        self.sport = "rugbyleague_nrl"
         self.timestamp = datetime.now().isoformat()
         self.credit_start = None
         self.credit_end = None
-        self.odds_mode = os.getenv("NFL_ODDS_MODE", "bookmakers").lower().strip()
+        self.odds_mode = os.getenv("NRL_ODDS_MODE", "bookmakers").lower().strip()
 
     def extract(self) -> pd.DataFrame:
-        """Extract NFL odds in standardized V3 format."""
         print(f"\n{'='*60}")
-        print("EVisionBet V3 - NFL Extraction")
+        print("EVisionBet V3 - NRL Extraction")
         print(f"{'='*60}")
 
         events = self._fetch_events()
@@ -178,8 +161,8 @@ class NFLExtractorV3:
             print("❌ No events found")
             return pd.DataFrame()
 
-        # Filter events: only process those that haven't started
-        # (commence_time > now + 5 min)
+        print(f"✅ Found {len(events)} events")
+
         now = datetime.now(timezone.utc)
         min_start_time = now + timedelta(minutes=5)
         filtered_events = []
@@ -197,11 +180,9 @@ class NFLExtractorV3:
 
         skipped = len(events) - len(filtered_events)
         if skipped > 0:
-            msg = (
-                "⏭️  Skipped {skipped} event(s) that already started or "
-                "start in <5 min"
+            print(
+                f"⏭️  Skipped {skipped} event(s) that already started or start in <5 min"
             )
-            print(msg.format(skipped=skipped))
 
         events = filtered_events
         if not events:
@@ -210,8 +191,7 @@ class NFLExtractorV3:
 
         rows: List[Dict] = []
         for event in events:
-            event_rows = self._process_event(event)
-            rows.extend(event_rows)
+            rows.extend(self._process_event(event))
 
         if not rows:
             print("❌ No odds extracted")
@@ -219,12 +199,10 @@ class NFLExtractorV3:
 
         df = pd.DataFrame(rows)
 
-        # Ensure all bookmaker columns exist
         for book in OUTPUT_BOOKMAKERS:
             if book not in df.columns:
                 df[book] = ""
 
-        # Initialize empty pair_id column (populated in filter stage)
         df["pair_id"] = None
 
         core_cols = [
@@ -239,7 +217,6 @@ class NFLExtractorV3:
             "player_name",
             "pair_id",
         ]
-
         if self.odds_mode == "regions":
             book_cols = [c for c in df.columns if c not in set(core_cols)]
             locked_first = [b for b in OUTPUT_BOOKMAKERS if b in book_cols]
@@ -253,10 +230,7 @@ class NFLExtractorV3:
 
     def _fetch_events(self) -> List[Dict]:
         url = f"{API_HOST}/v4/sports/{self.sport}/events"
-        params = {
-            "apiKey": self.api_key,
-            "regions": "au,us,us2,eu",
-        }
+        params = {"apiKey": self.api_key, "regions": "au,us,us2,eu"}
         try:
             resp = requests.get(url, params=params, timeout=20)
             resp.raise_for_status()
@@ -275,14 +249,15 @@ class NFLExtractorV3:
         away = event.get("away_team", "")
         home = event.get("home_team", "")
         commence = event.get("commence_time", "")
+
         event_name = f"{away} @ {home}"
 
-        event_id_str = str(event_id) if event_id is not None else ""
-        odds_resp = self._fetch_odds(event_id_str)
+        odds_resp = self._fetch_odds(str(event_id) if event_id is not None else "")
         if not odds_resp:
             return []
 
         bookmakers = odds_resp.get("bookmakers", [])
+
         raw_data: Dict = {}
         for bm in bookmakers:
             book_key = bm.get("key")
@@ -295,56 +270,41 @@ class NFLExtractorV3:
 
             for market in bm.get("markets", []):
                 market_type = market.get("key")
+
                 for outcome in market.get("outcomes", []):
                     selection = outcome.get("name", "")
-                    description = outcome.get("description", "")
                     point = outcome.get("point")
                     price = outcome.get("price")
 
-                    player_name = ""
-                    if market_type.startswith("player_"):
-                        player_name = description
-
-                    if player_name:
-                        key = (market_type, player_name, selection)
-                    else:
-                        key = (market_type, selection, None)
-
+                    key = (market_type, selection, None)
                     if key not in raw_data:
-                        raw_data[key] = {"points": {}, "prices": {}}
+                        raw_data[key] = {"prices": {}}
 
-                    if pd.notna(point):
-                        p = float(point)
-                        raw_data[key]["points"].setdefault(p, 0)
-                        raw_data[key]["points"][p] += 1
-
-                    if price is not None:
+                    if price:
                         raw_data[key]["prices"].setdefault(point, {})
                         raw_data[key]["prices"][point][book_name] = price
 
         rows: List[Dict] = []
         for key, data in raw_data.items():
-            if len(key) == 3 and key[2] is not None:
-                market_type, identifier, selection = key
-                player_name = identifier
-            else:
-                market_type, selection, _ = key
-                player_name = ""
+            market_type, selection, _ = key
+            player_name = ""
 
-            for point, books_with_point in data["prices"].items():
+            for point, books_with_this_point in data["prices"].items():
                 row = {
                     "event_id": event_id,
                     "extracted_at": self.timestamp,
                     "commence_time": self._format_time(commence),
-                    "league": "NFL",
+                    "league": "NRL",
                     "event_name": event_name,
                     "market_type": market_type,
                     "point": str(point) if point else "",
                     "selection": selection,
                     "player_name": player_name,
                 }
-                for book_name, price in books_with_point.items():
-                    row[book_name] = price
+
+                for bn, price in books_with_this_point.items():
+                    row[bn] = price
+
                 rows.append(row)
 
         return rows
@@ -352,35 +312,14 @@ class NFLExtractorV3:
     def _fetch_odds(self, event_id: str) -> Dict:
         url = f"{API_HOST}/v4/sports/{self.sport}/events/{event_id}/odds"
 
-        # NFL VALID MARKETS (verified Jan 10, 2026)
-        # Core markets available for NFL
-        primary_markets = (
-            "h2h,spreads,totals,alternate_spreads,alternate_totals,"
-            "team_totals,"
-            "player_pass_yds,player_pass_tds,player_pass_completions,"
-            "player_pass_attempts,player_pass_longest_completion,"
-            "player_rush_yds,player_rush_attempts,player_rush_longest,"
-            "player_receptions"
-        )
-
-        fallback_markets = "h2h,spreads,totals"
-
-        # Optional NFL markets (enable via INCLUDE_OPTIONAL_MARKETS=true)
-        # Note: first_half markets and player_td_anytime NOT available for NFL
-        include_optional = (
-            os.getenv("INCLUDE_OPTIONAL_MARKETS", "true").lower() == "true"
-        )
-        optional_markets = (
-            "player_field_goals,player_kicking_points,"
-            "player_1st_td,player_last_td,player_anytime_td"
-        )
-        markets_to_use = primary_markets + (
-            "," + optional_markets if include_optional else ""
+        core_markets = os.getenv(
+            "NRL_MARKETS",
+            "h2h,spreads,totals,alternate_spreads,alternate_totals",
         )
 
         params = {
             "apiKey": self.api_key,
-            "markets": markets_to_use,
+            "markets": core_markets,
             "oddsFormat": "decimal",
         }
 
@@ -392,54 +331,37 @@ class NFLExtractorV3:
         try:
             resp = requests.get(url, params=params, timeout=30)
             resp.raise_for_status()
+
             remaining = resp.headers.get("x-requests-remaining")
             if remaining:
                 self.credit_end = int(float(remaining))
+
             data = resp.json()
             return data if isinstance(data, dict) else {}
         except Exception as e:
-            msg_primary = (
-                "⚠️  Error fetching odds for {event_id} with primary markets: "
-                "{err}"
-            )
-            print(msg_primary.format(event_id=event_id, err=e))
-            # Retry with a minimal market set to avoid total failure
-            try:
-                fallback_params = params.copy()
-                fallback_params["markets"] = fallback_markets
-                resp = requests.get(url, params=fallback_params, timeout=20)
-                resp.raise_for_status()
-                remaining = resp.headers.get("x-requests-remaining")
-                if remaining:
-                    self.credit_end = int(float(remaining))
-                data = resp.json()
-                return data if isinstance(data, dict) else {}
-            except Exception as e2:
-                print(f"❌ Fallback odds fetch failed for {event_id}: {e2}")
-                return {}
+            print(f"⚠️  Error fetching odds for {event_id}: {e}")
+            return {}
 
     def _format_time(self, iso_time: str) -> str:
-        """Format ISO time to readable format (Perth timezone)."""
         try:
             dt = pd.to_datetime(iso_time)
             if dt.tz is None:
                 dt = dt.tz_localize("UTC")
             dt_local = dt.tz_convert("Australia/Perth")
-            return str(dt_local.strftime("%I:%M%p %d/%m/%y").lower())
+            return dt_local.strftime("%I:%M%p %d/%m/%y").lower()
         except Exception:
             return str(iso_time)
 
-    def save(
-        self, df: pd.DataFrame, filename: str | None = None
-    ) -> Path | None:
+    def save(self, df: pd.DataFrame, filename: str | None = None) -> Path | None:
         if df.empty:
             print("❌ No data to save")
             return None
 
         if filename is None:
-            filename = "NFL_Raw.csv"
+            filename = "NRL_Raw.csv"
 
         output_path = DATA_DIR / filename
+
         try:
             df.to_csv(output_path, index=False)
         except PermissionError:
@@ -453,10 +375,11 @@ class NFLExtractorV3:
 
 
 def main():
-    extractor = NFLExtractorV3()
+    extractor = NRLExtractorV3()
     df = extractor.extract()
     if not df.empty:
         extractor.save(df)
+
         if extractor.credit_start and extractor.credit_end:
             credits_used = extractor.credit_start - extractor.credit_end
             print(f"\n{'='*60}")

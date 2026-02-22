@@ -1,13 +1,13 @@
 """
-NFL Odds Spread Outlier Detection
+NBL Odds Spread Outlier Detection
 - Flags AU books offering unusually high odds vs sharp median
 - Requires >=2 sharp books and >=1 AU book on a line
 
 Usage:
-    python outlier_nfl_v3.py
+    python outlier_nbl_v3.py
 
 Output:
-    data/v3/extracts/NFL_Outliers.csv (or *_new.csv if locked)
+    data/v3/extracts/NBL_Outliers.csv (or *_new.csv if locked)
 """
 
 import glob
@@ -17,12 +17,18 @@ import numpy as np
 import pandas as pd
 
 SHARP_BOOKS = [
+    # 4⭐ sharps
     "pinnacle",
     "betfair_ex_eu",
     "matchbook",
     "draftkings",
     "fanduel",
     "lowvig",
+    # 3⭐ sharps (needed for NBL market depth)
+    "betonlineag",
+    "betmgm",
+    "betrivers",
+    "fanatics",
 ]
 AU_BOOKS = [
     "bet365",
@@ -59,10 +65,9 @@ OUTLIER_THRESHOLD = 0.02
 def detect_odds_outliers(row, sharp_books, au_books):
     sharp_odds = {}
     for book in sharp_books:
-        if pd.notna(row[book]):
+        if pd.notna(row.get(book)):
             try:
-                odds = float(row[book])
-                sharp_odds[book] = odds
+                sharp_odds[book] = float(row[book])
             except Exception:
                 pass
 
@@ -78,7 +83,7 @@ def detect_odds_outliers(row, sharp_books, au_books):
 
     au_outliers = []
     for book in au_books:
-        if pd.notna(row[book]):
+        if pd.notna(row.get(book)):
             try:
                 odds = float(row[book])
                 deviation = (odds - median_sharp) / median_sharp
@@ -107,31 +112,30 @@ def detect_odds_outliers(row, sharp_books, au_books):
     }
 
 
-def detect_nfl_outliers():
+def detect_nbl_outliers():
     candidates = [
-        "data/v3/extracts/NFL_Raw_new.csv",
-        "data/v3/extracts/NFL_Raw.csv",
-        "data/v3/extracts/football_nfl_raw.csv",
+        "data/v3/extracts/NBL_Raw_new.csv",
+        "data/v3/extracts/NBL_Raw.csv",
+        "data/v3/extracts/basketball_nbl_raw.csv",
     ]
     latest_csv = next((c for c in candidates if os.path.exists(c)), None)
     if not latest_csv:
-        legacy = sorted(glob.glob("data/v3/extracts/football_nfl_raw_*.csv"))
+        legacy = sorted(glob.glob("data/v3/extracts/basketball_nbl_raw_*.csv"))
         if legacy:
             latest_csv = legacy[-1]
+
     if not latest_csv:
-        print("❌ No raw NFL CSV found. Run extract_nfl_v3.py first.")
+        print("❌ No raw NBL CSV found. Run extract_nbl_v3.py first.")
         return
 
-    print(f"📂 Loading raw NFL CSV: {latest_csv}")
+    print(f"📂 Loading raw NBL CSV: {latest_csv}")
     df = pd.read_csv(latest_csv)
     print(f"   Rows: {len(df):,}\n")
 
     print("🔍 Filtering to lines with 2+ sharp + 1+ AU books...")
     df["num_sharp_books"] = df[SHARP_BOOKS].notna().sum(axis=1)
     df["num_au_books"] = df[AU_BOOKS].notna().sum(axis=1)
-    df_filtered = df[
-        (df["num_sharp_books"] >= 2) & (df["num_au_books"] >= 1)
-    ].copy()
+    df_filtered = df[(df["num_sharp_books"] >= 2) & (df["num_au_books"] >= 1)].copy()
     print(f"   Starting rows: {len(df):,}")
     print(f"   After filtering: {len(df_filtered):,}\n")
 
@@ -150,7 +154,7 @@ def detect_nfl_outliers():
         if (idx + 1) % 500 == 0:
             print(f"   Processed {idx + 1} rows...")
 
-    # Format for CSV output: keep median odds to 2 decimals
+    # 2-decimal formatting for median odds
     df_filtered["median_odds"] = (
         pd.to_numeric(df_filtered["median_odds"], errors="coerce").round(2)
     )
@@ -179,7 +183,8 @@ def detect_nfl_outliers():
     final_cols = core_cols + outlier_cols + bookmaker_cols
     df_output = df_outliers[final_cols].copy()
 
-    df_output["sport"] = "americanfootball_nfl"
+    df_output["sport"] = "basketball_nbl"
+
     normalized_cols = [
         "sport",
         "event_id",
@@ -196,18 +201,17 @@ def detect_nfl_outliers():
         "median_odds",
         "outlier_details",
     ]
-    normalized_cols = [c for c in normalized_cols if c in df_output.columns]
     normalized_cols_with_books = normalized_cols + [
         col for col in bookmaker_cols if col in df_output.columns
     ]
     df_all = df_output[normalized_cols_with_books].copy()
 
     os.makedirs("data/v3/extracts", exist_ok=True)
-    output_csv = "data/v3/extracts/NFL_Outliers.csv"
+    output_csv = "data/v3/extracts/NBL_Outliers.csv"
     try:
         df_output.to_csv(output_csv, index=False)
     except PermissionError:
-        output_csv = "data/v3/extracts/NFL_Outliers_new.csv"
+        output_csv = "data/v3/extracts/NBL_Outliers_new.csv"
         df_output.to_csv(output_csv, index=False)
         print(f"⚠️  Main file locked by backend, saved to: {output_csv}")
     else:
@@ -225,23 +229,9 @@ def detect_nfl_outliers():
 
     print(f"   Columns: {len(df_output.columns)}")
     print(f"   Rows: {len(df_output):,}\n")
-    print("📊 Outlier Statistics:")
-    print(f"   Total outlier occurrences: {df_output['num_outliers'].sum():,}")
-    print(f"   Avg outliers per line: {df_output['num_outliers'].mean():.1f}")
-    print(f"   Max outliers per line: {df_output['num_outliers'].max()}")
 
-    print("\n📈 Most Common Outlier Books:")
-    all_outliers = []
-    for books_str in df_output["outlier_books"].dropna():
-        if books_str:
-            all_outliers.extend([b.strip() for b in books_str.split(",")])
-    from collections import Counter
-
-    top_books = Counter(all_outliers)
-    for book, count in top_books.most_common(10):
-        print(f"   {book}: {count} times")
     return output_csv
 
 
 if __name__ == "__main__":
-    detect_nfl_outliers()
+    detect_nbl_outliers()

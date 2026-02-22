@@ -30,7 +30,9 @@ class PipelineOrchestrator:
     """Manage parallel pipeline execution."""
 
     def __init__(self):
-        self.sports = ["nfl", "nba"]  # Expandable
+        # NOTE: Some sports may be extraction-only
+        # until downstream scripts exist.
+        self.sports = ["nfl", "nba", "nbl", "afl", "nrl", "epl"]
         self.start_time = datetime.now()
         self.results = {}
 
@@ -42,6 +44,8 @@ class PipelineOrchestrator:
                 [sys.executable, script_name],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=300,  # 5 min timeout
             )
 
@@ -88,6 +92,10 @@ class PipelineOrchestrator:
         extractors = {
             "nfl": "extract_nfl_v3.py",
             "nba": "extract_nba_v3.py",
+            "nbl": "extract_nbl_v3.py",
+            "afl": "extract_afl_v3.py",
+            "nrl": "extract_nrl_v3.py",
+            "epl": "extract_soccer_epl_v3.py",
         }
 
         with ThreadPoolExecutor(max_workers=len(self.sports)) as executor:
@@ -111,11 +119,18 @@ class PipelineOrchestrator:
         filters = {
             "nfl": "filter_nfl_v3.py",
             "nba": "filter_nba_v3.py",
+            "nbl": "filter_nbl_v3.py",
+            "afl": "filter_afl_v3.py",
         }
 
         with ThreadPoolExecutor(max_workers=len(self.sports)) as executor:
             futures = {
-                executor.submit(self.run_command, sport, "filtering", script): sport
+                executor.submit(
+                    self.run_command,
+                    sport,
+                    "filtering",
+                    script,
+                ): sport
                 for sport, script in filters.items()
             }
 
@@ -134,6 +149,8 @@ class PipelineOrchestrator:
                 [sys.executable, "manage_allsports_ev.py"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=30,
             )
             if result.stdout:
@@ -152,6 +169,8 @@ class PipelineOrchestrator:
         calculators = {
             "nfl": "calculate_nfl_ev_full.py",
             "nba": "calculate_nba_ev_full.py",
+            "nbl": "calculate_nbl_ev_full.py",
+            "afl": "calculate_afl_ev_full.py",
         }
 
         with ThreadPoolExecutor(max_workers=len(self.sports)) as executor:
@@ -172,9 +191,19 @@ class PipelineOrchestrator:
         print("[STAGE] MERGE - Combining all sports")
         print("=" * 60)
 
-        ev_files = sorted(
-            glob.glob("data/v3/extracts/*_EV.csv")
-        )
+        ev_candidates = [
+            f
+            for f in glob.glob("data/v3/extracts/*_EV*.csv")
+            if not os.path.basename(f).startswith("AllSports_EV")
+        ]
+        ev_by_sport: dict[str, str] = {}
+        for f in ev_candidates:
+            sport_key = os.path.basename(f).split("_EV")[0]
+            if sport_key not in ev_by_sport or (
+                os.path.getmtime(f) > os.path.getmtime(ev_by_sport[sport_key])
+            ):
+                ev_by_sport[sport_key] = f
+        ev_files = sorted(ev_by_sport.values())
         if not ev_files:
             print("[ERROR] No EV CSV files found to merge")
             return
@@ -185,12 +214,20 @@ class PipelineOrchestrator:
 
         dfs = []
         total_rows = 0
+        sport_map = {
+            "NBA": "basketball_nba",
+            "NFL": "americanfootball_nfl",
+            "NBL": "basketball_nbl",
+            "AFL": "aussierules_afl",
+        }
         for file_path in ev_files:
             try:
                 df = pd.read_csv(file_path)
+                sport = os.path.basename(file_path).split("_")[0]
+                if "sport" not in df.columns:
+                    df["sport"] = sport_map.get(sport, sport.lower())
                 dfs.append(df)
                 total_rows += len(df)
-                sport = os.path.basename(file_path).split("_")[0]
                 print(f"  {sport}: {len(df):,} rows")
             except Exception as e:
                 print(f"  ERROR reading {file_path}: {e}")
@@ -222,6 +259,8 @@ class PipelineOrchestrator:
                 [sys.executable, "audit_pipeline.py"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=60,
             )
             if result.stdout:
@@ -230,6 +269,28 @@ class PipelineOrchestrator:
                 print(f"[WARN] Audit error: {result.stderr}")
         except Exception as e:
             print(f"[WARN] Could not run audit: {e}")
+
+    def generate_pats_picks(self):
+        """Generate Pats_Picks.csv from AllSports_EV.csv."""
+        print("\n" + "=" * 60)
+        print("[STAGE] PATS PICKS - Generate Pats_Picks.csv")
+        print("=" * 60)
+
+        try:
+            result = subprocess.run(
+                [sys.executable, "generate_pats_picks.py"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=60,
+            )
+            if result.stdout:
+                print(result.stdout)
+            if result.returncode != 0 and result.stderr:
+                print(f"[WARN] Pats Picks error: {result.stderr}")
+        except Exception as e:
+            print(f"[WARN] Could not generate Pats Picks: {e}")
 
     def summary(self):
         """Print execution summary."""
@@ -273,6 +334,7 @@ class PipelineOrchestrator:
         self.manage_allsports()
         self.calculate_parallel()
         self.merge_allsports()
+        self.generate_pats_picks()
         self.audit()
         self.summary()
 
@@ -286,6 +348,7 @@ class PipelineOrchestrator:
         self.manage_allsports()
         self.calculate_parallel()
         self.merge_allsports()
+        self.generate_pats_picks()
         self.audit()
         self.summary()
 

@@ -790,8 +790,14 @@ def calculate_nba_ev_full():
     
     df['best_au_odds_decimal'] = df.apply(calculate_best_au_odds, axis=1)
     df['best_au_bookmaker'] = df.apply(get_best_au_bookmaker, axis=1)
-    df['ev_percent'] = df.apply(lambda row: calculate_ev(row['fair_odds_decimal'], 
-                                                          row['best_au_odds_decimal']), axis=1)
+    df['ev_percent'] = df.apply(
+        lambda row: calculate_ev(
+            row['fair_odds_decimal'],
+            row['best_au_odds_decimal'],
+        ),
+        axis=1,
+    )
+    df['ev_percent'] = df['ev_percent'].round(2)
     
     # Define bookmaker columns BEFORE adding any calculated columns
     # Same order as extract_nba_v3.py ALL_BOOKMAKERS list
@@ -871,29 +877,61 @@ def calculate_nba_ev_full():
     os.makedirs("data/v3/extracts", exist_ok=True)
     all_sports_ev = "data/v3/extracts/AllSports_EV.csv"
     nba_ev = "data/v3/extracts/NBA_EV.csv"
+    nba_ev_fallback = "data/v3/extracts/NBA_EV_new.csv"
     
     # Save NBA EV
     try:
         df_all_output.to_csv(nba_ev, index=False)
         print(f"[OK] NBA_EV.csv saved: {len(df_all_output):,} rows")
     except PermissionError:
-        print("[WARN] NBA_EV.csv locked, skipping")
+        df_all_output.to_csv(nba_ev_fallback, index=False)
+        nba_ev = nba_ev_fallback
+        print(f"[WARN] NBA_EV.csv locked, saved to: {nba_ev_fallback}")
     
     # Merge all *_EV.csv files into AllSports_EV.csv
-    ev_files = sorted(glob.glob("data/v3/extracts/*_EV.csv"))
+    ev_candidates = [
+        f
+        for f in glob.glob("data/v3/extracts/*_EV*.csv")
+        if not os.path.basename(f).startswith("AllSports_EV")
+    ]
+    ev_by_sport = {}
+    for f in ev_candidates:
+        sport_key = os.path.basename(f).split("_EV")[0]
+        if sport_key not in ev_by_sport or os.path.getmtime(f) > os.path.getmtime(
+            ev_by_sport[sport_key]
+        ):
+            ev_by_sport[sport_key] = f
+    ev_files = sorted(ev_by_sport.values())
     if ev_files:
         dfs = []
+        sport_map = {
+            "NBA": "basketball_nba",
+            "NFL": "americanfootball_nfl",
+        }
         for f in ev_files:
             try:
                 df = pd.read_csv(f)
+                if "sport" not in df.columns:
+                    sport_key = os.path.basename(f).split("_EV")[0]
+                    df["sport"] = sport_map.get(sport_key, sport_key.lower())
                 dfs.append(df)
             except Exception:
                 pass
         if dfs:
             combined = pd.concat(dfs, ignore_index=True)
-            combined.to_csv(all_sports_ev, index=False)
-            print(f"[OK] AllSports_EV merged: {len(combined):,} rows "
-                  f"({combined['sport'].nunique()} sports)")
+            all_sports_ev_fallback = "data/v3/extracts/AllSports_EV_new.csv"
+            try:
+                combined.to_csv(all_sports_ev, index=False)
+                print(
+                    f"[OK] AllSports_EV merged: {len(combined):,} rows "
+                    f"({combined['sport'].nunique()} sports)"
+                )
+            except PermissionError:
+                combined.to_csv(all_sports_ev_fallback, index=False)
+                print(
+                    f"[WARN] AllSports_EV.csv locked; saved to {all_sports_ev_fallback}. "
+                    f"Rows: {len(combined):,}; sports: {combined['sport'].nunique()}"
+                )
     print(f"   Combined columns: {len(df_all_output.columns)}")
     print(f"   Combined rows: {len(df_all_output):,}\n")
     
@@ -901,22 +939,26 @@ def calculate_nba_ev_full():
     print("[STATS] Column Breakdown:")
     print("   Core metadata: 11")
     print("   Best AU book: 1 (best_au_bookmaker)")
-    print("   Metrics: 3 (best_au_odds_decimal, ev_percent, fair_odds_decimal)")
+    print(
+        "   Metrics: 3 (best_au_odds_decimal, ev_percent, "
+        "fair_odds_decimal)"
+    )
     print("   Stats: 2 (total_books, uses_devig)")
     print(f"   Bookmakers: {len(bookmaker_cols)}")
     print(f"   Total columns: {len(df_output.columns)}")
     
-    print(f"\n[STATS] EV Statistics:")
+    print("\n[STATS] EV Statistics:")
     print(f"   Mean EV: {df['ev_percent'].mean():.2f}%")
     print(f"   Median EV: {df['ev_percent'].median():.2f}%")
     print(f"   Min EV: {df['ev_percent'].min():.2f}%")
     print(f"   Max EV: {df['ev_percent'].max():.2f}%")
     
-    print(f"\n[STATS] EV Distribution:")
+    print("\n[STATS] EV Distribution:")
     print(f"   Positive EV: {(df['ev_percent'] > 0).sum():,}")
     print(f"   Negative EV: {(df['ev_percent'] < 0).sum():,}")
     
     return output_csv_full
+
 
 if __name__ == "__main__":
     calculate_nba_ev_full()

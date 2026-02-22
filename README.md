@@ -294,6 +294,7 @@ make test        # pytest (run unit tests)
 - ✅ **Deduplication** – Check `seen_hits.json` before writing EV hits
 - ✅ **Graceful degradation** – Skip unsupported props, exclude <2 sharp books
 - ✅ **Config via env vars** – Never hardcode API keys or database URLs
+- ✅ **Percent precision** – All CSV percent fields (e.g., `ev_percent`) are rounded to 2 decimals
 
 ---
 

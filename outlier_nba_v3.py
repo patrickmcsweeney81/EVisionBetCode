@@ -15,22 +15,52 @@ Output:
     data/v3/extracts/basketball_nba_outliers_YYYYMMDD_HHMMSS.csv
 """
 
-import pandas as pd
 import glob
 import os
-from datetime import datetime
+
 import numpy as np
+import pandas as pd
 
 # Bookmaker groupings
-SHARP_BOOKS = ['pinnacle', 'betfair_ex_eu', 'matchbook', 'draftkings', 'fanduel', 'lowvig']
-AU_BOOKS = ['bet365', 'betfair_ex_au', 'sportsbet', 'dabble_au', 'pointsbetau', 
-            'neds', 'ladbrokes_au', 'unibet', 'betright', 'betr_au', 'boombet', 
-            'playup', 'tab', 'tabtouch']
-ALL_BOOKS = SHARP_BOOKS + AU_BOOKS + ['betonlineag', 'betmgm', 'betrivers', 'fanatics', 
-                                       'hardrockbet', 'williamhill_us', 'bovada', 'espnbet', 
-                                       'coolbet', 'fliff']
+SHARP_BOOKS = [
+    'pinnacle',
+    'betfair_ex_eu',
+    'matchbook',
+    'draftkings',
+    'fanduel',
+    'lowvig',
+]
+AU_BOOKS = [
+    'bet365',
+    'betfair_ex_au',
+    'sportsbet',
+    'dabble_au',
+    'pointsbetau',
+    'neds',
+    'ladbrokes_au',
+    'unibet',
+    'betright',
+    'betr_au',
+    'boombet',
+    'playup',
+    'tab',
+    'tabtouch',
+]
+ALL_BOOKS = SHARP_BOOKS + AU_BOOKS + [
+    'betonlineag',
+    'betmgm',
+    'betrivers',
+    'fanatics',
+    'hardrockbet',
+    'williamhill_us',
+    'bovada',
+    'espnbet',
+    'coolbet',
+    'fliff',
+]
 
 OUTLIER_THRESHOLD = 0.02  # Flag books that differ >2% from median decimal odds
+
 
 def detect_odds_outliers(row, sharp_books, au_books):
     """
@@ -42,6 +72,8 @@ def detect_odds_outliers(row, sharp_books, au_books):
     - outlier_books: comma-separated list of AU book HIGH outliers
     - median_sharp_odds: median decimal odds from sharp books
     - num_outliers: count of AU book outliers
+        - outlier_percent: max positive deviation vs sharp median (percent)
+            e.g. 2.3 for +2.3%
     - outlier_details: detailed breakdown
     """
     # Get sharp book odds (for fair market reference)
@@ -51,7 +83,7 @@ def detect_odds_outliers(row, sharp_books, au_books):
             try:
                 odds = float(row[book])
                 sharp_odds[book] = odds
-            except:
+            except (TypeError, ValueError):
                 pass
     
     if len(sharp_odds) == 0:
@@ -59,6 +91,7 @@ def detect_odds_outliers(row, sharp_books, au_books):
             'outlier_books': '',
             'median_sharp_odds': np.nan,
             'num_outliers': 0,
+            'outlier_percent': np.nan,
             'outlier_details': ''
         }
     
@@ -80,20 +113,30 @@ def detect_odds_outliers(row, sharp_books, au_books):
                         'odds': odds,
                         'deviation': deviation
                     })
-            except:
+            except (TypeError, ValueError):
                 pass
+
+    max_deviation = max((o['deviation'] for o in au_outliers), default=np.nan)
     
     # Format output
     outlier_books = ', '.join([f"{o['book']}" for o in au_outliers])
-    outlier_details = ' | '.join([f"{o['book']}:{o['odds']:.3f}(+{o['deviation']:.1%})" 
-                                  for o in au_outliers])
+    outlier_details = ' | '.join(
+        [
+            f"{o['book']}:{o['odds']:.3f}(+{o['deviation']:.1%})"
+            for o in au_outliers
+        ]
+    )
     
     return {
         'outlier_books': outlier_books,
         'median_sharp_odds': median_sharp,
         'num_outliers': len(au_outliers),
+        'outlier_percent': (
+            (max_deviation * 100.0) if pd.notna(max_deviation) else np.nan
+        ),
         'outlier_details': outlier_details
     }
+
 
 def detect_nba_outliers():
     """Detect odds outliers in raw NBA data."""
@@ -124,7 +167,9 @@ def detect_nba_outliers():
     df['num_sharp_books'] = df[SHARP_BOOKS].notna().sum(axis=1)
     df['num_au_books'] = df[AU_BOOKS].notna().sum(axis=1)
     
-    df_filtered = df[(df['num_sharp_books'] >= 2) & (df['num_au_books'] >= 1)].copy()
+    df_filtered = df[
+        (df['num_sharp_books'] >= 2) & (df['num_au_books'] >= 1)
+    ].copy()
     print(f"   Starting rows: {len(df):,}")
     print(f"   After filtering: {len(df_filtered):,}\n")
     
@@ -135,6 +180,7 @@ def detect_nba_outliers():
     df_filtered['outlier_books'] = ''
     df_filtered['median_odds'] = np.nan
     df_filtered['num_outliers'] = 0
+    df_filtered['outlier_percent'] = np.nan
     df_filtered['outlier_details'] = ''
     
     # Process each row (optimized)
@@ -143,20 +189,49 @@ def detect_nba_outliers():
         df_filtered.at[idx, 'outlier_books'] = result['outlier_books']
         df_filtered.at[idx, 'median_odds'] = result['median_sharp_odds']
         df_filtered.at[idx, 'num_outliers'] = result['num_outliers']
+        df_filtered.at[idx, 'outlier_percent'] = result['outlier_percent']
         df_filtered.at[idx, 'outlier_details'] = result['outlier_details']
         
         # Progress indicator every 500 rows
         if (idx + 1) % 500 == 0:
             print(f"   Processed {idx + 1} rows...")
+
+    # Format for CSV output: keep median odds to 2 decimals
+    df_filtered['median_odds'] = (
+        pd.to_numeric(df_filtered['median_odds'], errors='coerce').round(2)
+    )
+
+    df_filtered['outlier_percent'] = pd.to_numeric(
+        df_filtered['outlier_percent'], errors='coerce'
+    ).round(1)
+
+    df_filtered['outlier_percent'] = df_filtered['outlier_percent'].apply(
+        lambda x: f"+{x:.1f}%" if pd.notna(x) else ''
+    )
     
     # Filter to only lines with outliers
     df_outliers = df_filtered[df_filtered['num_outliers'] > 0].copy()
     print(f"✅ Found {len(df_outliers):,} lines with outliers\n")
     
     # Reorder columns: core metadata + EV-style calcs + outlier columns + books
-    core_cols = ['event_id', 'extracted_at', 'commence_time', 'league', 'event_name', 
-                 'market_type', 'point', 'selection', 'player_name']
-    outlier_cols = ['num_outliers', 'outlier_books', 'median_odds', 'outlier_details']
+    core_cols = [
+        'event_id',
+        'extracted_at',
+        'commence_time',
+        'league',
+        'event_name',
+        'market_type',
+        'point',
+        'selection',
+        'player_name',
+    ]
+    outlier_cols = [
+        'num_outliers',
+        'outlier_books',
+        'outlier_percent',
+        'median_odds',
+        'outlier_details',
+    ]
     bookmaker_cols = [col for col in df_outliers.columns if col in ALL_BOOKS]
     
     final_cols = core_cols + outlier_cols + bookmaker_cols
@@ -165,12 +240,26 @@ def detect_nba_outliers():
     # Add sport and build combined all-sports outlier file
     df_output['sport'] = 'basketball_nba'
     normalized_cols = [
-        'sport', 'event_id', 'extracted_at', 'commence_time', 'league', 'event_name',
-        'market_type', 'point', 'selection', 'player_name',
-        'num_outliers', 'outlier_books', 'median_odds', 'outlier_details'
+        'sport',
+        'event_id',
+        'extracted_at',
+        'commence_time',
+        'league',
+        'event_name',
+        'market_type',
+        'point',
+        'selection',
+        'player_name',
+        'num_outliers',
+        'outlier_books',
+        'outlier_percent',
+        'median_odds',
+        'outlier_details',
     ]
     normalized_cols = [c for c in normalized_cols if c in df_output.columns]
-    normalized_cols_with_books = normalized_cols + [col for col in bookmaker_cols if col in df_output.columns]
+    normalized_cols_with_books = normalized_cols + [
+        col for col in bookmaker_cols if col in df_output.columns
+    ]
     df_all = df_output[normalized_cols_with_books].copy()
     
     # Save output
@@ -205,7 +294,7 @@ def detect_nba_outliers():
     print(f"   Max outliers per line: {df_output['num_outliers'].max()}")
     
     # Top outlier books - parse from outlier_books column
-    print(f"\n📈 Most Common Outlier Books:")
+    print("\n📈 Most Common Outlier Books:")
     all_outliers = []
     for books_str in df_output['outlier_books'].dropna():
         if books_str:
@@ -217,6 +306,7 @@ def detect_nba_outliers():
         print(f"   {book}: {count} times")
     
     return output_csv
+
 
 if __name__ == "__main__":
     detect_nba_outliers()

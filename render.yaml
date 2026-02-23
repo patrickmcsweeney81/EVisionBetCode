@@ -33,7 +33,7 @@ services:
       - key: AUTO_SEED_ON_START
         value: "true"
       - key: PYTHON_VERSION
-        value: "3.9.18"
+        value: "3.11.9"
 
   # Cron job - Extract odds from The Odds API
   - type: cron
@@ -54,6 +54,8 @@ services:
         fromDatabase:
           name: evisionbet-db
           property: connectionString
+      - key: PYTHON_VERSION
+        value: "3.11.9"
 
   # Cron job - Calculate EV opportunities
   - type: cron
@@ -71,6 +73,8 @@ services:
         fromDatabase:
           name: evisionbet-db
           property: connectionString
+      - key: PYTHON_VERSION
+        value: "3.11.9"
 
 databases:
   - name: evisionbet-db

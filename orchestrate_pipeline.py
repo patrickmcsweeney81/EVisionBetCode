@@ -12,11 +12,13 @@ Workflow:
 
 Usage:
     python orchestrate_pipeline.py
+    python orchestrate_pipeline.py --sports nba,afl,nrl,tennis
     python orchestrate_pipeline.py --extract-only
     python orchestrate_pipeline.py --calculate-only
     python orchestrate_pipeline.py --audit-only
 """
 
+import argparse
 import subprocess
 import sys
 import os
@@ -29,12 +31,26 @@ import glob
 class PipelineOrchestrator:
     """Manage parallel pipeline execution."""
 
-    def __init__(self):
+    def __init__(self, sports: list[str] | None = None):
         # NOTE: Some sports may be extraction-only
         # until downstream scripts exist.
-        self.sports = ["nfl", "nba", "nbl", "afl", "nrl", "epl"]
+        self.sports = sports or ["nfl", "nba", "nbl", "afl", "nrl", "epl"]
         self.start_time = datetime.now()
-        self.results = {}
+        self.results: dict[str, dict] = {}
+
+    def _selected(self, mapping: dict[str, str]) -> dict[str, str]:
+        """Return mapping filtered to currently selected sports."""
+        selected = {
+            s: script for s, script in mapping.items() if s in self.sports
+        }
+        missing = [s for s in self.sports if s not in mapping]
+        if missing:
+            print(
+                f"[INFO] No script registered for: {', '.join(missing)} "
+                f"(skipping)",
+                flush=True,
+            )
+        return selected
 
     def run_command(self, sport, stage, script_name):
         """Run a single script and return result."""
@@ -96,9 +112,15 @@ class PipelineOrchestrator:
             "afl": "extract_afl_v3.py",
             "nrl": "extract_nrl_v3.py",
             "epl": "extract_soccer_epl_v3.py",
+            "tennis": "extract_tennis_v3.py",
         }
 
-        with ThreadPoolExecutor(max_workers=len(self.sports)) as executor:
+        extractors = self._selected(extractors)
+        if not extractors:
+            print("[INFO] No extractors selected", flush=True)
+            return
+
+        with ThreadPoolExecutor(max_workers=len(extractors)) as executor:
             futures = {
                 executor.submit(
                     self.run_command, sport, "extraction", script
@@ -123,7 +145,12 @@ class PipelineOrchestrator:
             "afl": "filter_afl_v3.py",
         }
 
-        with ThreadPoolExecutor(max_workers=len(self.sports)) as executor:
+        filters = self._selected(filters)
+        if not filters:
+            print("[INFO] No filters selected", flush=True)
+            return
+
+        with ThreadPoolExecutor(max_workers=len(filters)) as executor:
             futures = {
                 executor.submit(
                     self.run_command,
@@ -173,7 +200,12 @@ class PipelineOrchestrator:
             "afl": "calculate_afl_ev_full.py",
         }
 
-        with ThreadPoolExecutor(max_workers=len(self.sports)) as executor:
+        calculators = self._selected(calculators)
+        if not calculators:
+            print("[INFO] No EV calculators selected", flush=True)
+            return
+
+        with ThreadPoolExecutor(max_workers=len(calculators)) as executor:
             futures = {
                 executor.submit(
                     self.run_command, sport, "EV calculation", script
@@ -359,13 +391,29 @@ class PipelineOrchestrator:
 
 def main():
     """Main entry point."""
-    orchestrator = PipelineOrchestrator()
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument(
+        "--sports",
+        type=str,
+        default="",
+        help=(
+            "Comma-separated sports to run (e.g. nba,afl,nrl,tennis). "
+            "If omitted, runs the default set."
+        ),
+    )
+    parser.add_argument("--extract-only", action="store_true")
+    parser.add_argument("--calculate-only", action="store_true")
+    parser.add_argument("--audit-only", action="store_true")
+    args = parser.parse_args()
 
-    if "--extract-only" in sys.argv:
+    sports = [s.strip().lower() for s in args.sports.split(",") if s.strip()]
+    orchestrator = PipelineOrchestrator(sports=sports or None)
+
+    if args.extract_only:
         orchestrator.run_extract_only()
-    elif "--calculate-only" in sys.argv:
+    elif args.calculate_only:
         orchestrator.run_calculate_only()
-    elif "--audit-only" in sys.argv:
+    elif args.audit_only:
         orchestrator.run_audit_only()
     else:
         orchestrator.run_full_pipeline()

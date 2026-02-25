@@ -39,6 +39,7 @@ dependencies = [
     "pandas>=2.0.0",
     "openpyxl>=3.1.0",
     "numpy>=1.24.0",
+    "networkx>=3.0",
 ]
 
 # Optional dependencies for features
@@ -52,6 +53,7 @@ dev = [
     "flake8>=6.1.0",
     "mypy>=1.7.0",
     "pylint>=3.0.0",
+    "pre-commit>=3.0.0",
 ]
 all = ["ev-arb-bot[telegram,dev]"]
 

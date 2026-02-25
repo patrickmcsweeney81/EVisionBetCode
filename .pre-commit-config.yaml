@@ -1,0 +1,43 @@
+# Pre-commit hooks for EVisionBet
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Black - Code formatter
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        args: [--line-length=100]
+        language_version: python3
+
+  # isort - Import sorter
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: [--profile=black, --line-length=100]
+
+  # flake8 - Linter
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+        args: [--max-line-length=100, --extend-ignore=E203,W503]
+
+  # Remove trailing whitespace
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: check-merge-conflict
+
+# Configuration notes:
+# - Black line-length: 100 (matches pyproject.toml)
+# - isort profile: black (compatible sorting)
+# - flake8 ignores: E203 (whitespace before ':'), W503 (line break before binary operator)
+# - Runs automatically on git commit after 'pre-commit install'

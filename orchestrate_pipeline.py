@@ -19,13 +19,14 @@ Usage:
 """
 
 import argparse
+import glob
+import os
 import subprocess
 import sys
-import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+
 import pandas as pd
-import glob
 
 
 class PipelineOrchestrator:
@@ -131,6 +132,130 @@ class PipelineOrchestrator:
             for future in as_completed(futures):
                 result = future.result()
                 self.results[f"{result['sport']}_extract"] = result
+
+    def merge_all_raw(self):
+        """Merge per-sport raw extracts into AllSports_Raw.csv."""
+        print("\n" + "=" * 60)
+        print("[STAGE] RAW MERGE - Combining all sports raw extracts")
+        print("=" * 60)
+
+        raw_candidates = [
+            f
+            for f in glob.glob("data/v3/extracts/*_Raw*.csv")
+            if not os.path.basename(f).startswith("AllSports_Raw")
+        ]
+        if not raw_candidates:
+            print("[WARN] No raw CSV files found to merge")
+            return
+
+        raw_by_sport: dict[str, str] = {}
+        for f in raw_candidates:
+            sport_key = os.path.basename(f).split("_Raw")[0]
+            if sport_key not in raw_by_sport or (
+                os.path.getmtime(f) > os.path.getmtime(raw_by_sport[sport_key])
+            ):
+                raw_by_sport[sport_key] = f
+
+        raw_files = sorted(raw_by_sport.values())
+        print(f"Found {len(raw_files)} raw files to merge:")
+        for f in raw_files:
+            print(f"  {os.path.basename(f)}")
+
+        sport_map = {
+            "NBA": "basketball_nba",
+            "NFL": "americanfootball_nfl",
+            "NBL": "basketball_nbl",
+            "AFL": "aussierules_afl",
+            "NRL": "rugbyleague_nrl",
+            "EPL": "soccer_epl",
+            "TENNIS": "tennis",
+        }
+
+        dfs = []
+        for file_path in raw_files:
+            try:
+                df = pd.read_csv(file_path)
+                if df.empty:
+                    continue
+
+                prefix = os.path.basename(file_path).split("_")[0]
+                if "sport" not in df.columns:
+                    df["sport"] = sport_map.get(prefix, prefix.lower())
+
+                if "event_name" in df.columns:
+                    if "away_team" not in df.columns:
+                        df["away_team"] = ""
+                    if "home_team" not in df.columns:
+                        df["home_team"] = ""
+                    mask = (df["away_team"].astype(str).str.strip() == "") | (
+                        df["home_team"].astype(str).str.strip() == ""
+                    )
+                    if mask.any():
+                        ev = df.loc[mask, "event_name"].astype(str)
+                        # Prefer " @ " delimiter used by extractors
+                        parts_at = ev.str.split(" @ ", n=1, expand=True)
+                        if parts_at.shape[1] == 2:
+                            df.loc[mask, "away_team"] = parts_at[0].fillna("")
+                            df.loc[mask, "home_team"] = parts_at[1].fillna("")
+                        else:
+                            parts_v = ev.str.split(" V ", n=1, expand=True)
+                            if parts_v.shape[1] == 2:
+                                df.loc[mask, "away_team"] = parts_v[0].fillna("")
+                                df.loc[mask, "home_team"] = parts_v[1].fillna("")
+
+                if "market" not in df.columns and "market_type" in df.columns:
+                    df["market"] = df["market_type"]
+
+                if "timestamp" not in df.columns and "extracted_at" in df.columns:
+                    df["timestamp"] = df["extracted_at"]
+
+                dfs.append(df)
+                print(f"  {prefix}: {len(df):,} rows")
+            except Exception as e:
+                print(f"  ERROR reading {file_path}: {e}")
+
+        if not dfs:
+            print("[WARN] No valid raw files to merge")
+            return
+
+        combined = pd.concat(dfs, ignore_index=True)
+        core_first = [
+            c
+            for c in [
+                "timestamp",
+                "sport",
+                "event_id",
+                "away_team",
+                "home_team",
+                "commence_time",
+                "league",
+                "event_name",
+                "market",
+                "market_type",
+                "point",
+                "selection",
+                "player_name",
+                "pair_id",
+            ]
+            if c in combined.columns
+        ]
+        remaining = [c for c in combined.columns if c not in set(core_first)]
+        combined = combined[core_first + remaining]
+
+        out_path = "data/v3/extracts/AllSports_Raw.csv"
+        try:
+            combined.to_csv(out_path, index=False)
+            print(f"[OK] AllSports_Raw.csv merged: {len(combined):,} rows")
+        except PermissionError:
+            out_path = "data/v3/extracts/AllSports_Raw_new.csv"
+            combined.to_csv(out_path, index=False)
+            print(f"[WARN] AllSports_Raw locked, saved to: {out_path}")
+
+        self.results["raw_merge"] = {
+            "status": "success",
+            "total_rows": len(combined),
+            "sports": int(combined["sport"].nunique()) if "sport" in combined.columns else None,
+        }
 
     def filter_parallel(self):
         """Run all filters in parallel."""
@@ -362,6 +487,7 @@ class PipelineOrchestrator:
         print()
 
         self.extract_parallel()
+        self.merge_all_raw()
         self.filter_parallel()
         self.manage_allsports()
         self.calculate_parallel()
@@ -373,6 +499,7 @@ class PipelineOrchestrator:
     def run_extract_only(self):
         """Extract only."""
         self.extract_parallel()
+        self.merge_all_raw()
         self.summary()
 
     def run_calculate_only(self):

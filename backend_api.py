@@ -75,7 +75,12 @@ OUTLIER_CSV_CANDIDATES = [
     DATA_DIR / "v3" / "extracts" / "AllSports_Outliers.csv",
     DATA_DIR / "v3" / "extracts" / "NBA_Outliers.csv",
 ]
-RAW_CSV = DATA_DIR / "raw_odds_pure.csv"
+RAW_CSV_CANDIDATES = [
+    DATA_DIR / "v3" / "extracts" / "AllSports_Raw.csv",
+    DATA_DIR / "v3" / "extracts" / "AllSports_Raw_new.csv",
+    DATA_DIR / "raw_odds_pure.csv",
+]
+RAW_CSV = RAW_CSV_CANDIDATES[-1]
 
 
 def _first_existing(paths):
@@ -133,6 +138,17 @@ def get_pats_picks_csv():
 
     return _first_existing(PATS_PICKS_CSV_CANDIDATES)
 
+
+def get_raw_csv():
+    """Return the Raw odds CSV to serve (prefer AllSports_Raw if present)."""
+    for p in RAW_CSV_CANDIDATES:
+        try:
+            if p.exists() and p.stat().st_size > 0:
+                return p
+        except Exception:
+            continue
+    return RAW_CSV_CANDIDATES[0]
+
 # ============================================================================
 # ADMIN CREDENTIALS (from env or hardcoded for simplicity)
 # ============================================================================
@@ -141,6 +157,31 @@ ADMIN_PASSWORD_HASH = os.getenv(
     "ADMIN_PASSWORD_HASH",
     hashlib.sha256("admin123".encode()).hexdigest(),  # Default: hashed "admin123"
 )
+
+# Issued admin bearer tokens (in-memory)
+_ADMIN_TOKENS: dict[str, float] = {}
+
+
+def _issue_admin_token(password: str, expires_in_seconds: int = 3600) -> str:
+    token = hashlib.sha256((password + datetime.utcnow().isoformat()).encode()).hexdigest()
+    _ADMIN_TOKENS[token] = datetime.utcnow().timestamp() + float(expires_in_seconds)
+    return token
+
+
+def _require_admin_bearer(authorization: Optional[str]) -> None:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized - missing token")
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Unauthorized - missing token")
+
+    now_ts = datetime.utcnow().timestamp()
+    expired = [t for t, exp in _ADMIN_TOKENS.items() if exp <= now_ts]
+    for t in expired:
+        _ADMIN_TOKENS.pop(t, None)
+
+    if token not in _ADMIN_TOKENS:
+        raise HTTPException(status_code=401, detail="Unauthorized - invalid token")
 
 
 # Simple in-memory pipeline status (local/dev use)
@@ -551,20 +592,21 @@ async def health_check():
             "path": str(ev_csv_path),
         }
 
-    if RAW_CSV.exists():
-        raw_mtime = datetime.fromtimestamp(RAW_CSV.stat().st_mtime)
+    raw_path = get_raw_csv()
+    if raw_path and raw_path.exists():
+        raw_mtime = datetime.fromtimestamp(raw_path.stat().st_mtime)
         health_data["pipelines"]["extract_odds"] = {
             "status": "healthy",
             "last_run": raw_mtime.isoformat(),
             "age_seconds": (datetime.now() - raw_mtime).total_seconds(),
-            "path": str(RAW_CSV),
+            "path": str(raw_path),
         }
     else:
         health_data["pipelines"]["extract_odds"] = {
             "status": "missing",
             "last_run": None,
             "age_seconds": None,
-            "path": str(RAW_CSV),
+            "path": str(raw_path) if raw_path else None,
         }
 
     return health_data
@@ -1160,15 +1202,21 @@ async def get_latest_odds(
 
 @app.get("/api/odds/raw")
 async def get_raw_odds(
+    authorization: Optional[str] = Header(None),
     limit: int = Query(500, ge=1, le=20000),
     offset: int = Query(0, ge=0),
     sport: Optional[str] = Query(None),
     market: Optional[str] = Query(None),
 ):
     """
-    Serve raw odds directly from raw_odds_pure.csv for frontend display when DB is unavailable.
+    Serve raw odds from the latest raw CSV (prefers merged AllSports_Raw.csv).
+
+    Admin-only: requires `Authorization: Bearer <token>`.
     """
-    if not RAW_CSV.exists():
+    _require_admin_bearer(authorization)
+
+    raw_csv = get_raw_csv()
+    if not raw_csv or not raw_csv.exists():
         return {
             "rows": [],
             "count": 0,
@@ -1198,7 +1246,7 @@ async def get_raw_odds(
     last_ts = None
 
     try:
-        with RAW_CSV.open("r", encoding="utf-8", newline="") as f:
+        with raw_csv.open("r", encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
             columns = reader.fieldnames or []
             for row in reader:
@@ -1279,8 +1327,7 @@ async def admin_auth(password: str = Query(...)):
         {"authenticated": true/false, "token": "..."}
     """
     if verify_admin_password(password):
-        # Generate simple token (in production, use JWT)
-        token = hashlib.sha256((password + datetime.utcnow().isoformat()).encode()).hexdigest()
+        token = _issue_admin_token(password, expires_in_seconds=3600)
         return {"authenticated": True, "token": token, "expires_in": 3600}  # 1 hour
     else:
         raise HTTPException(status_code=401, detail="Invalid password")

@@ -497,7 +497,7 @@ def _run_pipeline_background(with_extract: bool = False):
     repo_dir = Path(__file__).resolve().parent
     def _target():
         try:
-            cmd = ["python", "run_nba_pipeline.py"]
+            cmd = [sys.executable, "run_nba_pipeline.py"]
             if with_extract:
                 cmd.append("--extract")
             subprocess.run(cmd, check=True, cwd=str(repo_dir))

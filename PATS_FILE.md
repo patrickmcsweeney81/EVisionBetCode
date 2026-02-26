@@ -319,6 +319,68 @@ User sees EV opportunities
 
 ---
 
+## ☁️ REMOTE ACCESS & CLOUD
+
+**Yes — the code is in GitHub. You can access it from anywhere.**
+
+### Q: Can I access this remotely while away from my PC?
+
+**Yes.** The project has two layers of cloud access:
+
+| Layer | How | URL |
+|-------|-----|-----|
+| **Source Code** | GitHub repository | https://github.com/patrickmcsweeney81/EVisionBetCode |
+| **Live API** | Render.com cloud deployment | See render.yaml (auto-deploys from `main` branch) |
+| **Browser IDE** | GitHub Codespaces (no install needed) | Open repo on GitHub → click `Code` → `Codespaces` |
+
+**From any device with a browser:**
+1. Go to https://github.com/patrickmcsweeney81/EVisionBetCode
+2. Click `Code` → `Codespaces` → `New codespace`
+3. The full dev environment opens in the browser (no VS Code install needed)
+4. Run the pipeline, edit code, and push changes — all from the browser
+
+**Render runs the API 24/7** (see `render.yaml`) — the backend continues running even when your PC is off. It auto-re-deploys whenever you push to the `main` branch.
+
+---
+
+### Q: Can I find this AI chat in GitHub?
+
+**The chat itself is not stored in GitHub, but your AI session context is.**
+
+`PATS_FILE.md` (this file) **is the AI session memory.** Every time you commit it, the full project context is saved to GitHub. When you start a new AI session:
+
+1. Any AI (Copilot, Claude, etc.) reads `PATS_FILE.md` first
+2. It instantly knows: current status, completed tasks, active files, and what to do next
+3. You pick up exactly where you left off — from any device
+
+**To save your current chat context to GitHub:**
+```bash
+# After updating PATS_FILE.md with the latest status:
+git add PATS_FILE.md
+git commit -m "Update session context - <brief description>"
+git push
+```
+
+**To resume a session on a new device:**
+```bash
+git pull  # Gets latest PATS_FILE.md
+# Open GitHub Copilot Chat → "Read PATS_FILE.md and resume"
+```
+
+---
+
+### Q: What runs in the cloud vs locally?
+
+| Component | Cloud (always on) | Local (your PC) |
+|-----------|-------------------|-----------------|
+| API server | ✅ Render.com | ✅ localhost:8000 |
+| Source code | ✅ GitHub | ✅ Cloned copy |
+| Pipeline cron jobs | ✅ Render.com (every 30 min) | Manual run |
+| Frontend | ✅ Deploy to Netlify | ✅ localhost:3000 |
+| AI chat context | ✅ PATS_FILE.md in GitHub | ✅ Local copy |
+
+---
+
 ## 🎯 NEXT STEPS
 
 **Immediate:**
@@ -335,7 +397,7 @@ User sees EV opportunities
 
 ---
 
-**Last Updated:** December 28, 2025, 1:00 PM  
+**Last Updated:** February 26, 2026  
 **Status:** ✅ All systems operational, documentation consolidated, ready for development  
 **Next Review:** When major changes made or Pat requests update
 

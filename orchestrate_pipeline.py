@@ -12,6 +12,7 @@ Workflow:
 
 Usage:
     python orchestrate_pipeline.py
+    python orchestrate_pipeline.py --clean
     python orchestrate_pipeline.py --sports nba,afl,nrl,tennis
     python orchestrate_pipeline.py --extract-only
     python orchestrate_pipeline.py --calculate-only
@@ -480,11 +481,32 @@ class PipelineOrchestrator:
 
         print()
 
-    def run_full_pipeline(self):
+    def clean_csvs(self):
+        """Delete all CSV files from data/v3/extracts/ before a fresh run."""
+        print("\n" + "=" * 60)
+        print("[STAGE] CLEAN - Deleting all CSVs in data/v3/extracts/")
+        print("=" * 60)
+
+        csv_dir = "data/v3/extracts"
+        os.makedirs(csv_dir, exist_ok=True)
+        removed = 0
+        for csv_file in glob.glob(os.path.join(csv_dir, "*.csv")):
+            try:
+                os.remove(csv_file)
+                print(f"  Deleted: {os.path.basename(csv_file)}")
+                removed += 1
+            except Exception as e:
+                print(f"  ERROR deleting {csv_file}: {e}")
+        print(f"[OK] Removed {removed} CSV file(s)")
+
+    def run_full_pipeline(self, clean: bool = False):
         """Execute complete pipeline."""
         print("[ORCHESTRATE] Full Pipeline: Extract -> Filter -> Manage")
         print("              -> Calculate -> Merge -> Audit")
         print()
+
+        if clean:
+            self.clean_csvs()
 
         self.extract_parallel()
         self.merge_all_raw()
@@ -531,6 +553,11 @@ def main():
     parser.add_argument("--extract-only", action="store_true")
     parser.add_argument("--calculate-only", action="store_true")
     parser.add_argument("--audit-only", action="store_true")
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Delete all CSVs in data/v3/extracts/ before running the pipeline.",
+    )
     args = parser.parse_args()
 
     sports = [s.strip().lower() for s in args.sports.split(",") if s.strip()]
@@ -543,7 +570,7 @@ def main():
     elif args.audit_only:
         orchestrator.run_audit_only()
     else:
-        orchestrator.run_full_pipeline()
+        orchestrator.run_full_pipeline(clean=args.clean)
 
 
 if __name__ == "__main__":
